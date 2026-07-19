@@ -1,0 +1,38 @@
+{
+	"schemaVersion": 1,
+	"id": "relativitytick",
+	"version": "${version}",
+	"name": "RelativityTick",
+	"description": "This is an example description! Tell everyone what your mod is about!",
+	"authors": [
+		"Me!"
+	],
+	"contact": {
+		"homepage": "https://fabricmc.net/",
+		"sources": "https://github.com/FabricMC/fabric-example-mod"
+	},
+	"license": "CC0-1.0",
+	"icon": "assets/relativitytick/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"com.abelian.RelativityTick"
+		],
+		"client": [
+			"com.abelian.client.RelativityTickClient"
+		]
+	},
+	"mixins": [
+		"relativitytick.mixins.json",
+		{
+			"config": "relativitytick.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.16.14",
+		"minecraft": "~1.21.4",
+		"java": ">=21",
+		"fabric-api": "*"
+	}
+}

@@ -1,0 +1,22 @@
+{
+  "required": true,
+  "package": "com.abelian.client.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "ClientEntityManagerAccessor",
+    "ClientWorldAccessor",
+    "ClientWorldMixin",
+    "ClientWorldChunkMixin",
+    "EntityRenderDispatcherMixin",
+    "PistonBlockEntityMixin",
+    "WorldRendererMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  },
+  "mixins": [
+	]
+}

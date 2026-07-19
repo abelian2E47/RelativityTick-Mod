@@ -1,0 +1,22 @@
+{
+  "required": true,
+  "package": "com.abelian.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "ChunkTickSchedulerMixin",
+    "ServerEntityManagerAccessor",
+    "ServerWorldAccessor",
+    "ServerWorldEntityAccessor",
+    "ServerWorldMixin",
+    "TickMangerMixin",
+    "WorldChunkMixin",
+    "WorldChunkDirectBlockEntityTickInvokerMixin",
+    "WorldTickSchedulerAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+	}
+}
