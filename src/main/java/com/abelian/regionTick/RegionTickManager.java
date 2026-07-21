@@ -1,5 +1,6 @@
 package com.abelian.regionFreeze;
 
+   import com.abelian.RegionTickContext;
 import com.abelian.RelativityTickUtils;
 import com.abelian.network.EntityStateRecord;
 import net.minecraft.block.Block;
@@ -140,34 +141,59 @@ public class RegionTickManager {
 
     public List<EntityStateRecord> stepRegion(ServerWorld world, WorldTickScheduler<Block> blockScheduler, BiConsumer<BlockPos, Block> blockTicker, WorldTickScheduler<Fluid> fluidScheduler, BiConsumer<BlockPos, Fluid> fluidTicker) {
         List<EntityStateRecord> entityStates = new ArrayList<>();
+        if (!isControlled()) return entityStates;
+
         setCurrentWorldTime(world.getTime());
-        if (isControlled()){
-            stepped++;
-            long virtualTrigger = freezeStartTime + stepped;
-            for (ChunkTickManager chunk : region){
-                chunk.stepScheduledTicks(blockScheduler,blockTicker,virtualTrigger);
-                chunk.stepScheduledTicks(fluidScheduler,fluidTicker,virtualTrigger);
-                chunk.stepBlockEntities(world);
+        stepped++;
+        long virtualTime = freezeStartTime + stepped;
+        RegionTickContext.begin(world, virtualTime);
+        try {
+            stepScheduledTicks(blockScheduler, blockTicker, fluidScheduler, fluidTicker, virtualTime);
+            processSyncedBlockEvents(world);
+            for (ChunkTickManager chunk : region) {
                 entityStates.addAll(chunk.stepEntities(world));
             }
+            for (ChunkTickManager chunk : region) {
+                chunk.stepBlockEntities(world);
+            }
             markStep();
+        } finally {
+            RegionTickContext.end();
         }
         return entityStates;
     }
 
     public void stepRegionWithoutState(ServerWorld world, WorldTickScheduler<Block> blockScheduler, BiConsumer<BlockPos, Block> blockTicker, WorldTickScheduler<Fluid> fluidScheduler, BiConsumer<BlockPos, Fluid> fluidTicker) {
+        if (!isControlled()) return;
+
         setCurrentWorldTime(world.getTime());
-        if (isControlled()){
-            stepped++;
-            long virtualTrigger = freezeStartTime + stepped;
-            for (ChunkTickManager chunk : region){
-                chunk.stepScheduledTicks(blockScheduler,blockTicker,virtualTrigger);
-                chunk.stepScheduledTicks(fluidScheduler,fluidTicker,virtualTrigger);
-                chunk.stepBlockEntities(world);
+        stepped++;
+        long virtualTime = freezeStartTime + stepped;
+        RegionTickContext.begin(world, virtualTime);
+        try {
+            stepScheduledTicks(blockScheduler, blockTicker, fluidScheduler, fluidTicker, virtualTime);
+            processSyncedBlockEvents(world);
+            for (ChunkTickManager chunk : region) {
                 chunk.stepEntitiesWithoutState(world);
             }
+            for (ChunkTickManager chunk : region) {
+                chunk.stepBlockEntities(world);
+            }
             markStep();
+        } finally {
+            RegionTickContext.end();
         }
+    }
+
+    private void stepScheduledTicks(WorldTickScheduler<Block> blockScheduler, BiConsumer<BlockPos, Block> blockTicker, WorldTickScheduler<Fluid> fluidScheduler, BiConsumer<BlockPos, Fluid> fluidTicker, long virtualTime) {
+        for (ChunkTickManager chunk : region) {
+            chunk.stepScheduledTicks(blockScheduler, blockTicker, virtualTime);
+            chunk.stepScheduledTicks(fluidScheduler, fluidTicker, virtualTime);
+        }
+    }
+
+    private void processSyncedBlockEvents(ServerWorld world) {
+        RegionBlockEventProcessor.process(world, owner -> owner == this);
     }
 
     public List<EntityStateRecord> collectEntityStates(ServerWorld world) {
@@ -212,6 +238,10 @@ public class RegionTickManager {
 
     public long getFreezeStartTime(){
         return freezeStartTime;
+    }
+
+    public long getVirtualTime() {
+        return freezeStartTime + stepped;
     }
 
     public int getStepped(){
