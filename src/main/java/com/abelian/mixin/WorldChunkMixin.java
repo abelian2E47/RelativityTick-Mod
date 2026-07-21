@@ -1,7 +1,7 @@
 package com.abelian.mixin;
 
-import com.abelian.regionFreeze.RegionTickManager;
-import com.abelian.regionFreeze.RegionsManager;
+import com.abelian.regionTick.RegionTickManager;
+import com.abelian.regionTick.RegionsManager;
 import net.minecraft.registry.Registry;
 import net.minecraft.world.World;
 import net.minecraft.util.math.BlockPos;

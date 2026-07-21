@@ -1,6 +1,6 @@
 package com.abelian.mixin;
 
-import com.abelian.regionFreeze.RegionsManager;
+import com.abelian.regionTick.RegionsManager;
 import net.minecraft.entity.Entity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.ChunkPos;

@@ -6,7 +6,7 @@ import net.minecraft.network.codec.PacketCodec;
 import net.minecraft.network.codec.PacketCodecs;
 import net.minecraft.network.packet.CustomPayload;
 
-    public record RegionStepPayload(String regionID, int steps, double accumulatorPhase) implements CustomPayload {
+    public record RegionStepPayload(String regionID, int steps, double accumulatorPhase, long virtualTime) implements CustomPayload {
     public static final Id<RegionStepPayload> ID = new CustomPayload.Id<>(RelativityTick.REGION_STEP_PACKET_ID);
     @Override
     public Id<? extends CustomPayload> getId() {return ID;}
@@ -20,6 +20,9 @@ import net.minecraft.network.packet.CustomPayload;
 
             PacketCodecs.DOUBLE,
             RegionStepPayload::accumulatorPhase,
+            PacketCodecs.LONG,
+            RegionStepPayload::virtualTime,
+
 
             RegionStepPayload::new
     );

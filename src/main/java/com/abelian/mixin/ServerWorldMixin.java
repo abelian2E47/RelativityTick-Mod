@@ -2,8 +2,8 @@ package com.abelian.mixin;
 
 import com.abelian.ServerTickBridge;
 
-import com.abelian.regionFreeze.RegionTickManager;
-import com.abelian.regionFreeze.RegionsManager;
+import com.abelian.regionTick.RegionTickManager;
+import com.abelian.regionTick.RegionsManager;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.server.world.ServerWorld;

@@ -5,9 +5,9 @@ import com.abelian.network.RegionEntitySyncPayload;
 import com.abelian.network.RegionStepPayload;
 import com.abelian.network.RegionSyncPayload;
 import com.abelian.network.RegionTPSPayload;
-import com.abelian.regionFreeze.RegionTickManager;
-import com.abelian.regionFreeze.RegionsManager;
-import com.abelian.regionFreeze.RegionPersistentState;
+import com.abelian.regionTick.RegionTickManager;
+import com.abelian.regionTick.RegionsManager;
+import com.abelian.regionTick.RegionPersistentState;
 import net.fabricmc.api.ModInitializer;
 
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
@@ -134,14 +134,14 @@ public class RelativityTick implements ModInitializer {
                     region.setAccumulator(accRef[0]);
                     region.setPendingSteps(remaining);
                     if (stepsTaken > 0) {
-                        RegionStepPayload stepPayload = new RegionStepPayload(id, stepsTaken, accRef[0]);
+                        RegionStepPayload stepPayload = new RegionStepPayload(id, stepsTaken, accRef[0], region.getVirtualTime());
                         for (ServerPlayerEntity player : world.getPlayers()) {
                             ServerPlayNetworking.send(player, stepPayload);
                         }
 
                         if (remaining == 0) {
                             RegionSyncPayload syncPayload = new RegionSyncPayload(id, region.getDimensionId(), region.getChunkPositions(),
-                                    region.isControlled(), region.isRunning(), false, region.getRate());
+                                    region.isControlled(), region.isRunning(), false, region.getRate(), region.getVirtualTime());
                             RegionEntitySyncPayload entityPayload = new RegionEntitySyncPayload(id, new ArrayList<>(entityStates.values()));
                             for (ServerPlayerEntity player : world.getPlayers()) {
                                 ServerPlayNetworking.send(player, syncPayload);
@@ -200,6 +200,12 @@ public class RelativityTick implements ModInitializer {
                 }
 
                 region.setAccumulator(accRef[0]);
+                if (stepsTaken > 0) {
+                    RegionStepPayload stepPayload = new RegionStepPayload(id, stepsTaken, accRef[0], region.getVirtualTime());
+                    for (ServerPlayerEntity player : world.getPlayers()) {
+                        ServerPlayNetworking.send(player, stepPayload);
+                    }
+                }
                 long regionDurationNano = System.nanoTime() - regionStartNano;
                 region.recordTickDuration(regionDurationNano);
                 region.updateTickStats();

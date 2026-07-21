@@ -2,6 +2,7 @@ package com.abelian.client.mixin;
 
 import com.abelian.client.ClientRegionManager;
 import com.abelian.client.ClientRegionTicker;
+import com.abelian.client.EntityInterpolationManager;
 import com.abelian.client.RegionTickDeltaManager;
 import com.abelian.network.RegionSyncPayload;
 import net.minecraft.client.render.Camera;
@@ -16,6 +17,9 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyArgs;
 import org.spongepowered.asm.mixin.injection.invoke.arg.Args;
+
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Mixin(EntityRenderDispatcher.class)
 public class EntityRenderDispatcherMixin {
@@ -37,7 +41,7 @@ public class EntityRenderDispatcherMixin {
             }
             args.set(4, tickDelta);
             Vec3d camPos = this.camera.getPos();
-            Vec3d worldRenderPos = ClientRegionTicker.getInterpolatedEntityPos(entity, regionID, tickDelta);
+            Vec3d worldRenderPos = EntityInterpolationManager.getInterpolatedEntityPos(entity, regionID, tickDelta);
             Vec3d relativePos = worldRenderPos.subtract(camPos);
             args.set(1, relativePos.x);
             args.set(2, relativePos.y);

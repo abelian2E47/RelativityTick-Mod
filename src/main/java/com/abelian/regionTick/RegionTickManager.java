@@ -1,4 +1,4 @@
-package com.abelian.regionFreeze;
+package com.abelian.regionTick;
 
    import com.abelian.RegionTickContext;
 import com.abelian.RelativityTickUtils;

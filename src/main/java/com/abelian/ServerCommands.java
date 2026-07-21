@@ -5,9 +5,9 @@ import com.abelian.network.EntityStateRecord;
 import com.abelian.network.RegionEntitySyncPayload;
 import com.abelian.network.RegionStepPayload;
 import com.abelian.network.RegionSyncPayload;
-import com.abelian.regionFreeze.RegionTickManager;
-import com.abelian.regionFreeze.RegionsManager;
-import com.abelian.regionFreeze.RegionTickManager.RegionState;
+import com.abelian.regionTick.RegionTickManager;
+import com.abelian.regionTick.RegionsManager;
+import com.abelian.regionTick.RegionTickManager.RegionState;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
@@ -302,7 +302,7 @@ public class ServerCommands {
         if (rcc.manager.isControlled()) release(rcc);
         RegionsManager.removeRegion(rcc.id);
 
-        RegionSyncPayload payload = new RegionSyncPayload(rcc.id, rcc.manager.getDimensionId(), java.util.Collections.emptySet(), false, false, false, 20);
+        RegionSyncPayload payload = new RegionSyncPayload(rcc.id, rcc.manager.getDimensionId(), java.util.Collections.emptySet(), false, false, false, 20, rcc.manager.getVirtualTime());
         sendToWorldPlayers(rcc.world, payload);
 
         rcc.source.sendFeedback(() -> Text.translatable("relativitytick.command.region.removed", Text.literal(rcc.id).formatted(Formatting.GOLD)), false);
@@ -387,12 +387,12 @@ public class ServerCommands {
     private static void syncRegionState(RegionCommandContext rcc) {
         RegionSyncPayload payload = new RegionSyncPayload(rcc.id, rcc.manager.getDimensionId(), rcc.manager.getChunkPositions(),
                 rcc.manager.isControlled(), rcc.manager.isRunning(), rcc.manager.getPendingSteps() > 0,
-                rcc.manager.getRate());
+                rcc.manager.getRate(), rcc.manager.getVirtualTime());
         sendToWorldPlayers(rcc.world, payload);
     }
 
     private static void sendStepPayload(RegionCommandContext rcc, int steps) {
-        RegionStepPayload payload = new RegionStepPayload(rcc.id,  steps, rcc.manager.getAccumulator());
+        RegionStepPayload payload = new RegionStepPayload(rcc.id,  steps, rcc.manager.getAccumulator(), rcc.manager.getVirtualTime());
         sendToWorldPlayers(rcc.world, payload);
     }
 

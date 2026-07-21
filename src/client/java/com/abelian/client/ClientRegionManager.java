@@ -22,6 +22,7 @@ public class ClientRegionManager {
             removeChunkIndex(payload.id());
             if (payload.chunkPositions().isEmpty()) {
                 REGIONS.remove(payload.id());
+
                 ClientRegionTicker.clearRegion(payload.id());
                 RegionTickDeltaManager.clearRegion(payload.id());
             } else {

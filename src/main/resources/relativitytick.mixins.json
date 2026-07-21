@@ -8,8 +8,10 @@
     "ServerWorldAccessor",
     "ServerWorldEntityAccessor",
     "ServerWorldMixin",
+    "ServerWorldBlockEventMixin",
     "TickMangerMixin",
     "WorldChunkMixin",
+    "WorldMixin",
     "WorldChunkDirectBlockEntityTickInvokerMixin",
     "WorldTickSchedulerAccessor"
   ],

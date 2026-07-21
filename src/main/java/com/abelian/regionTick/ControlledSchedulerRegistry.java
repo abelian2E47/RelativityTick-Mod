@@ -1,4 +1,4 @@
-package com.abelian.regionFreeze;
+package com.abelian.regionTick;
 
 import net.minecraft.world.tick.ChunkTickScheduler;
 

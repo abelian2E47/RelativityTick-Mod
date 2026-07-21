@@ -1,7 +1,7 @@
 package com.abelian.mixin;
 
-import com.abelian.regionFreeze.RegionTickManager;
-import com.abelian.regionFreeze.RegionsManager;
+import com.abelian.regionTick.RegionTickManager;
+import com.abelian.regionTick.RegionsManager;
 import net.minecraft.world.tick.ChunkTickScheduler;
 import net.minecraft.world.tick.OrderedTick;
 import org.spongepowered.asm.mixin.Mixin;

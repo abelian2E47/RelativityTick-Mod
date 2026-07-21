@@ -2,6 +2,7 @@ package com.abelian.client;
 
 import com.abelian.network.RegionTPSPayload;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.minecraft.util.math.Vec3d;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.Map;
