@@ -24,6 +24,7 @@ import static com.abelian.client.EntityInterpolationManager.ENTITY_INTERPOLATION
 
 public class ClientRegionTicker {
     private static final List<Entity> ENTITY_TICK_BUFFER = new java.util.ArrayList<>(128);
+    private static long nextRegionTickTime = Long.MIN_VALUE;
 
     public static void clearRegion(String regionId) {
         ENTITY_INTERPOLATIONS.entrySet().removeIf(entry -> entry.getValue().regionId().equals(regionId));
@@ -42,7 +43,7 @@ public class ClientRegionTicker {
             RegionSyncPayload region = ClientRegionManager.getRegion(payload.regionID());
             if (region == null) return;
 
-            tickRegion(world, region.id(), region.chunkPositions(), payload.steps(), payload.virtualTime());
+            tickRegion(world, region.id(), region.chunkPositions(), payload.steps());
             RegionTickDeltaManager.recordTickStep(region.id(), region.rate(), payload.accumulatorPhase());
         }));
 
@@ -64,13 +65,12 @@ public class ClientRegionTicker {
         }
     }
 
-    private static void tickRegion(ClientWorld world, String regionId, Set<Long> chunkSet, int stepsTaken, long finalVirtualTime) {
+    private static void tickRegion(ClientWorld world, String regionId, Set<Long> chunkSet, int stepsTaken) {
         Map<Integer, Vec3d> previousPositions = new HashMap<>();
         Map<Integer, Entity> tickedEntities = new HashMap<>();
-        long firstVirtualTime = finalVirtualTime - stepsTaken + 1;
 
         for (int i = 0; i < stepsTaken; i++) {
-            RegionTickContext.begin(world, firstVirtualTime + i);
+            RegionTickContext.begin(world, nextRegionTickTime++);
             try {
                 collectTickingEntities(world, chunkSet);
                 for (Entity entity : ENTITY_TICK_BUFFER) {
@@ -111,7 +111,7 @@ public class ClientRegionTicker {
             cache.getTrackingSections(chunkPos).forEach(section -> {
                 if (section.getStatus().shouldTrack()) {
                     section.stream().forEach(entity -> {
-                        if (!(entity instanceof PlayerEntity) && !entity.isRemoved()) {
+                        if (!(entity instanceof PlayerEntity) && !entity.isRemoved() && !isPassenger(entity)) {
                             ENTITY_TICK_BUFFER.add(entity);
                         }
                     });
@@ -120,5 +120,8 @@ public class ClientRegionTicker {
         }
     }
 
-
+    private static boolean isPassenger(Entity entity) {
+        Entity vehicle = entity.getVehicle();
+        return vehicle != null && !vehicle.isRemoved() && vehicle.hasPassenger(entity);
+    }
 }

@@ -112,9 +112,7 @@ public class RelativityTick implements ModInitializer {
 
                     Map<Integer, EntityStateRecord> entityStates = new LinkedHashMap<>();
                     while (regionBudgetNano > 0 && stepsTaken < stepsToTake && remaining > 0) {
-                        for (EntityStateRecord state : region.stepRegion(world, blockTickScheduler, blockTicker, fluidTickScheduler, fluidTicker)) {
-                            entityStates.put(state.entityId(), state);
-                        }
+                        region.tickRegion(world, blockTickScheduler, blockTicker, fluidTickScheduler, fluidTicker);
                         stepsTaken++;
                         remaining--;
 
@@ -130,18 +128,23 @@ public class RelativityTick implements ModInitializer {
                             break;
                         }
                     }
+                    if (stepsTaken > 0) {
+                        for (EntityStateRecord state : region.collectEntityStates(world)) {
+                            entityStates.put(state.entityId(), state);
+                        }
+                    }
 
                     region.setAccumulator(accRef[0]);
                     region.setPendingSteps(remaining);
                     if (stepsTaken > 0) {
-                        RegionStepPayload stepPayload = new RegionStepPayload(id, stepsTaken, accRef[0], region.getVirtualTime());
+                        RegionStepPayload stepPayload = new RegionStepPayload(id, stepsTaken, accRef[0]);
                         for (ServerPlayerEntity player : world.getPlayers()) {
                             ServerPlayNetworking.send(player, stepPayload);
                         }
 
                         if (remaining == 0) {
                             RegionSyncPayload syncPayload = new RegionSyncPayload(id, region.getDimensionId(), region.getChunkPositions(),
-                                    region.isControlled(), region.isRunning(), false, region.getRate(), region.getVirtualTime());
+                                    region.isControlled(), region.isRunning(), false, region.getRate());
                             RegionEntitySyncPayload entityPayload = new RegionEntitySyncPayload(id, new ArrayList<>(entityStates.values()));
                             for (ServerPlayerEntity player : world.getPlayers()) {
                                 ServerPlayNetworking.send(player, syncPayload);
@@ -179,7 +182,7 @@ public class RelativityTick implements ModInitializer {
                 region.setReachTickDurationLimit(false);
 
                 while (regionBudgetNano > 0 && stepsTaken < stepsToTake) {
-                    region.stepRegionWithoutState(world, blockScheduler, bTicker, fluidScheduler, fTicker);
+                    region.tickRegion(world, blockScheduler, bTicker, fluidScheduler, fTicker);
                     stepsTaken++;
 
                     if (region.getPendingSteps() > 0) {
@@ -201,7 +204,7 @@ public class RelativityTick implements ModInitializer {
 
                 region.setAccumulator(accRef[0]);
                 if (stepsTaken > 0) {
-                    RegionStepPayload stepPayload = new RegionStepPayload(id, stepsTaken, accRef[0], region.getVirtualTime());
+                    RegionStepPayload stepPayload = new RegionStepPayload(id, stepsTaken, accRef[0]);
                     for (ServerPlayerEntity player : world.getPlayers()) {
                         ServerPlayNetworking.send(player, stepPayload);
                     }

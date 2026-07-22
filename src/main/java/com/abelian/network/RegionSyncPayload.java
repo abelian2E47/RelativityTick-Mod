@@ -9,7 +9,7 @@ import net.minecraft.network.packet.CustomPayload;
 import java.util.HashSet;
 import java.util.Set;
 
-public record RegionSyncPayload(String id, String dimension, Set<Long> chunkPositions, boolean isControlled, boolean isRunning, boolean stepping, double rate, long virtualTime) implements CustomPayload {
+public record RegionSyncPayload(String id, String dimension, Set<Long> chunkPositions, boolean isControlled, boolean isRunning, boolean stepping, double rate) implements CustomPayload {
     public static final Id<RegionSyncPayload> ID = new CustomPayload.Id<>(RelativityTick.REGION_SYNC_PACKET_ID);
     @Override
     public Id<? extends CustomPayload> getId() {return ID;}
@@ -34,8 +34,6 @@ public record RegionSyncPayload(String id, String dimension, Set<Long> chunkPosi
 
             PacketCodecs.DOUBLE,
             RegionSyncPayload::rate,
-            PacketCodecs.LONG,
-            RegionSyncPayload::virtualTime,
 
 
             RegionSyncPayload::new

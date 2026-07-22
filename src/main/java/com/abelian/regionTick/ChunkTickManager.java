@@ -79,7 +79,7 @@ public class ChunkTickManager {
     }
 
 
-    public <T> void stepScheduledTicks(WorldTickScheduler<T> worldScheduler, BiConsumer<BlockPos, T> ticker, long virtualTrigger) {
+    public <T> void tickScheduledTicks(WorldTickScheduler<T> worldScheduler, BiConsumer<BlockPos, T> ticker, long virtualTrigger) {
         WorldTickSchedulerAccessor<T> worldAccess = (WorldTickSchedulerAccessor<T>) worldScheduler;
         ChunkTickScheduler<T> chunkScheduler = worldAccess.getChunkTickSchedulers().get(this.chunkPosLong);
 
@@ -97,7 +97,7 @@ public class ChunkTickManager {
     }
 
     @SuppressWarnings("unchecked")
-    public void stepBlockEntities(ServerWorld world) {
+    public void tickBlockEntities(ServerWorld world) {
         int chunkX = (int) (this.chunkPosLong & 0xFFFFFFFFL);
         int chunkZ = (int) (this.chunkPosLong >>> 32);
         WorldChunk chunk = world.getChunk(chunkX, chunkZ);
@@ -143,7 +143,8 @@ public class ChunkTickManager {
         return states;
     }
 
-    public void stepEntitiesWithoutState(ServerWorld world) {
+
+    public void tickEntities(ServerWorld world) {
         entityTickBuffer.clear();
         collectTickableEntities(world);
 
@@ -157,31 +158,6 @@ public class ChunkTickManager {
                 }
             }
         }
-    }
-
-    public List<EntityStateRecord> stepEntities(ServerWorld world) {
-        List<EntityStateRecord> states = new ArrayList<>();
-        entityTickBuffer.clear();
-        collectTickableEntities(world);
-
-        for (Entity entity : entityTickBuffer) {
-            if (!entity.isRemoved()) {
-                ServerTickBridge.setCustomTickInProgress(true);
-                try {
-                    ((ServerWorldAccessor) world).invokeTickEntity(entity);
-                } finally {
-                    ServerTickBridge.setCustomTickInProgress(false);
-                }
-                states.add(new EntityStateRecord(
-                        entity.getId(),
-                        entity.getX(), entity.getY(), entity.getZ(),
-                        entity.getYaw(), entity.getPitch(),
-                        entity.getVelocity().x, entity.getVelocity().y, entity.getVelocity().z
-                ));
-            }
-        }
-
-        return states;
     }
 
     @SuppressWarnings("unchecked")
@@ -195,12 +171,18 @@ public class ChunkTickManager {
         trackingSections.forEach(section -> {
             if (section.getStatus().shouldTrack()) {
                 section.stream().forEach(entity -> {
-                    if (!(entity instanceof PlayerEntity) && !entity.isRemoved()) {
+                    //防止乘客tick两次
+                    if (!(entity instanceof PlayerEntity) && !entity.isRemoved() && !isPassenger(entity)) {
                         entityTickBuffer.add(entity);
                     }
                 });
             }
         });
     }
-}
+
+    private static boolean isPassenger(Entity entity) {
+        Entity vehicle = entity.getVehicle();
+        return vehicle != null && !vehicle.isRemoved() && vehicle.hasPassenger(entity);
+    }
+} 
 

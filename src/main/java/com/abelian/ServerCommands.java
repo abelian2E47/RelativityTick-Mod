@@ -250,9 +250,10 @@ public class ServerCommands {
 
         Map<Integer, EntityStateRecord> entityStates = new LinkedHashMap<>();
         for (int i = 0; i < steps; i++) {
-            for (EntityStateRecord state : rcc.manager.stepRegion(rcc.world, rcc.world.getBlockTickScheduler(), blockTicker, rcc.world.getFluidTickScheduler(), fluidTicker)) {
-                entityStates.put(state.entityId(), state);
-            }
+            rcc.manager.tickRegion(rcc.world, rcc.world.getBlockTickScheduler(), blockTicker, rcc.world.getFluidTickScheduler(), fluidTicker);
+        }
+        for (EntityStateRecord state : rcc.manager.collectEntityStates(rcc.world)) {
+            entityStates.put(state.entityId(), state);
         }
 
         sendFeedback(rcc.source, rcc.id, "relativitytick.command.region.stepped", steps);
@@ -302,7 +303,7 @@ public class ServerCommands {
         if (rcc.manager.isControlled()) release(rcc);
         RegionsManager.removeRegion(rcc.id);
 
-        RegionSyncPayload payload = new RegionSyncPayload(rcc.id, rcc.manager.getDimensionId(), java.util.Collections.emptySet(), false, false, false, 20, rcc.manager.getVirtualTime());
+        RegionSyncPayload payload = new RegionSyncPayload(rcc.id, rcc.manager.getDimensionId(), java.util.Collections.emptySet(), false, false, false, 20);
         sendToWorldPlayers(rcc.world, payload);
 
         rcc.source.sendFeedback(() -> Text.translatable("relativitytick.command.region.removed", Text.literal(rcc.id).formatted(Formatting.GOLD)), false);
@@ -387,12 +388,12 @@ public class ServerCommands {
     private static void syncRegionState(RegionCommandContext rcc) {
         RegionSyncPayload payload = new RegionSyncPayload(rcc.id, rcc.manager.getDimensionId(), rcc.manager.getChunkPositions(),
                 rcc.manager.isControlled(), rcc.manager.isRunning(), rcc.manager.getPendingSteps() > 0,
-                rcc.manager.getRate(), rcc.manager.getVirtualTime());
+                rcc.manager.getRate());
         sendToWorldPlayers(rcc.world, payload);
     }
 
     private static void sendStepPayload(RegionCommandContext rcc, int steps) {
-        RegionStepPayload payload = new RegionStepPayload(rcc.id,  steps, rcc.manager.getAccumulator(), rcc.manager.getVirtualTime());
+        RegionStepPayload payload = new RegionStepPayload(rcc.id, steps, rcc.manager.getAccumulator());
         sendToWorldPlayers(rcc.world, payload);
     }
 

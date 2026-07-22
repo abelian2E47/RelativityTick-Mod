@@ -327,7 +327,7 @@ public class RegionsManager {
 
     private static RegionSyncPayload createSyncPayload(String id, RegionTickManager region) {
         return new RegionSyncPayload(id, region.getDimensionId(), region.getChunkPositions(),
-                region.isControlled(), region.isRunning(), region.getPendingSteps() > 0, region.getRate(), region.getVirtualTime());
+                region.isControlled(), region.isRunning(), region.getPendingSteps() > 0, region.getRate());
     }
 
     private static DimensionChunkKey key(ServerWorld world, long chunkPos) {

@@ -8,8 +8,8 @@ public final class RegionTickContext {
     private RegionTickContext() {
     }
 
-    public static void begin(World world, long virtualTime) {
-        CURRENT.set(new State(world, virtualTime));
+    public static void begin(World world, long tickTime) {
+        CURRENT.set(new State(world, tickTime));
     }
 
     public static void end() {
@@ -18,9 +18,9 @@ public final class RegionTickContext {
 
     public static Long getTime(World world) {
         State state = CURRENT.get();
-        return state != null && state.world == world ? state.virtualTime : null;
+        return state != null && state.world == world ? state.tickTime : null;
     }
 
-    private record State(World world, long virtualTime) {
+    private record State(World world, long tickTime) {
     }
 }
