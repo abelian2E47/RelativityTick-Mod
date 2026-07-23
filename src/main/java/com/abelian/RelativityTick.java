@@ -1,11 +1,7 @@
 package com.abelian;
 
-import com.abelian.network.EntityStateRecord;
-import com.abelian.network.RegionEntitySyncPayload;
-import com.abelian.network.RegionStepPayload;
-import com.abelian.network.RegionSyncPayload;
-import com.abelian.network.RegionTPSPayload;
-import com.abelian.regionTick.RegionTickManager;
+import com.abelian.network.*;
+import com.abelian.regionTick.Region;
 import com.abelian.regionTick.RegionsManager;
 import com.abelian.regionTick.RegionPersistentState;
 import net.fabricmc.api.ModInitializer;
@@ -82,14 +78,13 @@ public class RelativityTick implements ModInitializer {
 				}));
 
         //记录tick开始的时间用作mspt计算
-        ServerTickEvents.END_SERVER_TICK.register(server -> {
-            tickStartTime = System.nanoTime();
-        });
+        ServerTickEvents.END_SERVER_TICK.register(server -> tickStartTime = System.nanoTime());
 
-        //步进
+        //step
         ServerTickEvents.END_SERVER_TICK.register(server -> {
+            //遍历region
             for (String id : RegionsManager.getRegionIdsByPriority()) {
-                RegionTickManager region = RegionsManager.getRegion(id);
+                Region region = RegionsManager.getRegion(id);
                 ServerWorld world = server.getWorld(region.getDimension());
                 if (world == null) continue;
 
@@ -98,7 +93,7 @@ public class RelativityTick implements ModInitializer {
                 BiConsumer<BlockPos, Block> blockTicker = (pos, block) -> world.getBlockState(pos).scheduledTick(world, pos, world.getRandom());
                 BiConsumer<BlockPos, Fluid> fluidTicker = (pos, fluid) -> world.getFluidState(pos).onScheduledTick(world, pos, fluid.getDefaultState().getBlockState());
 
-                if (region.isControlled() && region.getPendingSteps() > 0 && !region.isRunning()) {
+                if (region.isControlled() && region.isStepping() && !region.isRunning()) {
                     long regionStartNano = System.nanoTime();
                     long regionBudgetNano = (long)(region.getTickDurationLimit() * 1_000_000L);
                     double rate = region.getRate();
@@ -137,14 +132,10 @@ public class RelativityTick implements ModInitializer {
                     region.setAccumulator(accRef[0]);
                     region.setPendingSteps(remaining);
                     if (stepsTaken > 0) {
-                        RegionStepPayload stepPayload = new RegionStepPayload(id, stepsTaken, accRef[0]);
-                        for (ServerPlayerEntity player : world.getPlayers()) {
-                            ServerPlayNetworking.send(player, stepPayload);
-                        }
 
                         if (remaining == 0) {
                             RegionSyncPayload syncPayload = new RegionSyncPayload(id, region.getDimensionId(), region.getChunkPositions(),
-                                    region.isControlled(), region.isRunning(), false, region.getRate());
+                                    region.getState(), region.getRate());
                             RegionEntitySyncPayload entityPayload = new RegionEntitySyncPayload(id, new ArrayList<>(entityStates.values()));
                             for (ServerPlayerEntity player : world.getPlayers()) {
                                 ServerPlayNetworking.send(player, syncPayload);
@@ -159,7 +150,7 @@ public class RelativityTick implements ModInitializer {
         //按rate运行
         ServerTickEvents.END_SERVER_TICK.register(server -> {
             for (String id : RegionsManager.getRegionIdsByPriority()) {
-                RegionTickManager region = RegionsManager.getRegion(id);
+                Region region = RegionsManager.getRegion(id);
 
                 if (!region.isRunning() || !region.isControlled()) continue;
 
@@ -202,13 +193,6 @@ public class RelativityTick implements ModInitializer {
                     }
                 }
 
-                region.setAccumulator(accRef[0]);
-                if (stepsTaken > 0) {
-                    RegionStepPayload stepPayload = new RegionStepPayload(id, stepsTaken, accRef[0]);
-                    for (ServerPlayerEntity player : world.getPlayers()) {
-                        ServerPlayNetworking.send(player, stepPayload);
-                    }
-                }
                 long regionDurationNano = System.nanoTime() - regionStartNano;
                 region.recordTickDuration(regionDurationNano);
                 region.updateTickStats();
@@ -217,7 +201,7 @@ public class RelativityTick implements ModInitializer {
 
         ServerTickEvents.START_SERVER_TICK.register(server -> {
             for (String id : RegionsManager.getRegionIdsByPriority()) {
-                RegionTickManager region = RegionsManager.getRegion(id);
+                Region region = RegionsManager.getRegion(id);
                 ServerWorld world = server.getWorld(region.getDimension());
                 if (world == null || world.getTime() % 20 != 0) continue;
 

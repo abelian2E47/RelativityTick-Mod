@@ -12,7 +12,7 @@ import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
-import com.abelian.SelectionOperationPayload;
+import com.abelian.network.SelectionOperationPayload;
 
 import java.util.HashSet;
 import java.util.Set;

@@ -100,19 +100,19 @@ public class RegionPersistentState extends PersistentState {
                     ? regionNbt.getDouble("tickDurationLimit ")
                     : regionNbt.contains("tickDurationLimit ") ? regionNbt.getDouble("tickDurationLimit ") : 10.0;
             int priority = regionNbt.contains("regionPriority") ? regionNbt.getInt("regionPriority") : 1;
-            RegionTickManager.RegionState regionState = readRegionState(regionNbt);
+            Region.RegionState regionState = readRegionState(regionNbt);
             state.regions.put(id, new RegionData(dimension, chunks, rate, maxRegionCostMs, priority, regionState));
         }
         return state;
     }
 
-    private static RegionTickManager.RegionState readRegionState(NbtCompound regionNbt) {
-        if (!regionNbt.contains("state")) return RegionTickManager.RegionState.RELEASED;
+    private static Region.RegionState readRegionState(NbtCompound regionNbt) {
+        if (!regionNbt.contains("state")) return Region.RegionState.RELEASED;
 
         try {
-            return RegionTickManager.RegionState.valueOf(regionNbt.getString("state"));
+            return Region.RegionState.valueOf(regionNbt.getString("state"));
         } catch (IllegalArgumentException ignored) {
-            return RegionTickManager.RegionState.RELEASED;
+            return Region.RegionState.RELEASED;
         }
     }
 
@@ -150,7 +150,7 @@ public class RegionPersistentState extends PersistentState {
         markDirty();
     }
 
-    public record RegionData(RegistryKey<World> dimension, Set<Long> chunks, double rate, double tickDurationLimit , int regionPriority, RegionTickManager.RegionState state) {
+    public record RegionData(RegistryKey<World> dimension, Set<Long> chunks, double rate, double tickDurationLimit , int regionPriority, Region.RegionState state) {
         public RegionData {
             chunks = Set.copyOf(chunks);
         }

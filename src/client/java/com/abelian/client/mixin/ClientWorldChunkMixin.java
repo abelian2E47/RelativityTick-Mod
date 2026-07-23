@@ -18,6 +18,8 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+import java.util.Objects;
+
 @Mixin(WorldChunk.class)
 public abstract class   ClientWorldChunkMixin extends Chunk {
     public ClientWorldChunkMixin(ChunkPos pos, UpgradeData upgradeData, HeightLimitView heightLimitView, Registry<Biome> biomeRegistry, long inhabitedTime, @Nullable ChunkSection[] sectionArray, @Nullable BlendingData blendingData) {
@@ -27,7 +29,7 @@ public abstract class   ClientWorldChunkMixin extends Chunk {
     @Inject(method = "canTickBlockEntity", at = @At("HEAD"), cancellable = true)
     private void tickHorizon$canTickBlockEntity(BlockPos pos, CallbackInfoReturnable<Boolean> cir) {
         World world = ((WorldChunk) (Object) this).getWorld();
-        if (world instanceof net.minecraft.client.world.ClientWorld clientWorld && ClientRegionManager.isRegionControlled(clientWorld, this.getPos())) {
+        if (world instanceof net.minecraft.client.world.ClientWorld clientWorld && Objects.requireNonNull(ClientRegionManager.getRegion(clientWorld, this.getPos())).isControlled()) {
             cir.setReturnValue(false);
         }
     }

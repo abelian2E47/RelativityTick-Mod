@@ -34,7 +34,7 @@ public class ChunkTickManager {
     }
 
     @SuppressWarnings("unchecked")
-    public <T> void takeOverChunk(WorldTickScheduler<T> worldScheduler, RegionTickManager region, long currentWorldTime) {
+    public <T> void takeOverChunk(WorldTickScheduler<T> worldScheduler, Region region, long currentWorldTime) {
         WorldTickSchedulerAccessor<T> worldAccess = (WorldTickSchedulerAccessor<T>) worldScheduler;
         ChunkTickScheduler<T> chunkScheduler = worldAccess.getChunkTickSchedulers().get(chunkPosLong);
         if (chunkScheduler == null || ControlledSchedulerRegistry.getRegion(chunkScheduler) == region) return;
@@ -47,7 +47,7 @@ public class ChunkTickManager {
     }
 
     @SuppressWarnings("unchecked")
-    public <T> void releaseChunk(WorldTickScheduler<T> worldScheduler, RegionTickManager region, long currentWorldTime, long freezeStartTime, int stepped) {
+    public <T> void releaseChunk(WorldTickScheduler<T> worldScheduler, Region region, long currentWorldTime, long freezeStartTime, int stepped) {
         WorldTickSchedulerAccessor<T> worldAccess = (WorldTickSchedulerAccessor<T>) worldScheduler;
         ChunkTickScheduler<T> chunkScheduler = worldAccess.getChunkTickSchedulers().get(chunkPosLong);
         if (chunkScheduler == null || ControlledSchedulerRegistry.getRegion(chunkScheduler) != region) return;

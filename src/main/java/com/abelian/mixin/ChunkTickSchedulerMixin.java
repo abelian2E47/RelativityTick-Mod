@@ -1,6 +1,6 @@
 package com.abelian.mixin;
 
-import com.abelian.regionTick.RegionTickManager;
+import com.abelian.regionTick.Region;
 import com.abelian.regionTick.RegionsManager;
 import net.minecraft.world.tick.ChunkTickScheduler;
 import net.minecraft.world.tick.OrderedTick;
@@ -23,7 +23,7 @@ public abstract class ChunkTickSchedulerMixin<T> {
         }
 
         ChunkTickScheduler<T> scheduler = (ChunkTickScheduler<T>) (Object) this;
-        RegionTickManager region = RegionsManager.getControlledRegionByScheduler(scheduler);
+        Region region = RegionsManager.getControlledRegionByScheduler(scheduler);
 
         if (region == null) {
             return;

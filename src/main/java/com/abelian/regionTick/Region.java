@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.BiConsumer;
 
-public class RegionTickManager {
+public class Region {
     public enum RegionState {
         RELEASED,
         FROZEN,
@@ -49,7 +49,7 @@ public class RegionTickManager {
 
     private long lastStatTime = System.currentTimeMillis();
 
-    public RegionTickManager(String id, RegistryKey<World> dimension, Set<Long> chunkPositions){
+    public Region(String id, RegistryKey<World> dimension, Set<Long> chunkPositions){
         this.id = id;
         this.dimension = dimension;
         for (long chunkPos : chunkPositions){
@@ -99,6 +99,13 @@ public class RegionTickManager {
         }
     }
 
+    public <T> void releaseRegion(WorldTickScheduler<T> worldScheduler, long currentWorldTime) {
+        for (ChunkTickManager chunk : region){
+            chunk.releaseChunk(worldScheduler, this, currentWorldTime,freezeStartTime,stepped);
+        }
+
+    }
+
     public void takeOverChunk(long chunkPos, ServerWorld world) {
         for (ChunkTickManager chunk : region) {
             if (chunk.getChunkPosLong() != chunkPos) continue;
@@ -130,14 +137,6 @@ public class RegionTickManager {
     public long getCurrentWorldTime() {
         return currentWorldTime;
     }
-
-    public <T> void releaseRegion(WorldTickScheduler<T> worldScheduler, long currentWorldTime) {
-        for (ChunkTickManager chunk : region){
-            chunk.releaseChunk(worldScheduler, this, currentWorldTime,freezeStartTime,stepped);
-        }
-
-    }
-
 
     public void tickRegion(ServerWorld world, WorldTickScheduler<Block> blockScheduler, BiConsumer<BlockPos, Block> blockTicker, WorldTickScheduler<Fluid> fluidScheduler, BiConsumer<BlockPos, Fluid> fluidTicker) {
         if (!isControlled()) return;
@@ -212,6 +211,8 @@ public class RegionTickManager {
     public boolean isControlled(){ return state != RegionState.RELEASED; }
 
     public boolean isRunning(){ return state == RegionState.RUNNING; }
+
+    public boolean isStepping(){ return pendingSteps > 0;}
 
     public long getFreezeStartTime(){
         return freezeStartTime;

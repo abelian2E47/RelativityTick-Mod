@@ -12,7 +12,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class ClientRegionManager {
-    private static final Map<String, RegionSyncPayload> REGIONS = new ConcurrentHashMap<>();
+    private static final Map<String, ClientRegion> REGIONS = new ConcurrentHashMap<>();
     private record DimensionChunkKey(String dimension, long chunkPos) {}
 
     private static final Map<DimensionChunkKey, String> CHUNK_TO_REGION_ID = new ConcurrentHashMap<>();
@@ -26,7 +26,7 @@ public class ClientRegionManager {
                 ClientRegionTicker.clearRegion(payload.id());
                 RegionTickDeltaManager.clearRegion(payload.id());
             } else {
-                REGIONS.put(payload.id(), payload);
+                REGIONS.put(payload.id(), new ClientRegion(payload));
                 indexChunks(payload.id(), payload.dimension(), payload.chunkPositions());
             }
         }));
@@ -36,31 +36,22 @@ public class ClientRegionManager {
         return CHUNK_TO_REGION_ID.get(key(world, chunkPos.toLong()));
     }
 
-    public static RegionSyncPayload getRegion(String id){
-        RegionSyncPayload region = REGIONS.get(id);
+    public static ClientRegion getRegion(String id){
+        ClientRegion region = REGIONS.get(id);
         return isCurrentDimension(region) ? region : null;
     }
 
-    public static RegionSyncPayload getRegion(ClientWorld world, ChunkPos chunkPos) {
+    public static ClientRegion getRegion(ClientWorld world, ChunkPos chunkPos) {
         String id = getRegionIDFromChunk(world, chunkPos);
         return id == null ? null : REGIONS.get(id);
     }
-
-    public static boolean isRegionControlled(ClientWorld world, ChunkPos chunkPos) {
-        RegionSyncPayload regionData = getRegion(world, chunkPos);
-        return regionData != null && regionData.isControlled();
-    }
-
-    public static boolean isRegionFrozenAndIdle(RegionSyncPayload regionData) {
-        return regionData != null && regionData.isControlled() && !regionData.isRunning() && !regionData.stepping();
-    }
     
     private static void removeChunkIndex(String id) {
-        RegionSyncPayload oldRegion = REGIONS.get(id);
+        ClientRegion oldRegion = REGIONS.get(id);
         if (oldRegion == null) return;
 
-        for (long chunkPos : oldRegion.chunkPositions()) {
-            CHUNK_TO_REGION_ID.remove(new DimensionChunkKey(oldRegion.dimension(), chunkPos), id);
+        for (long chunkPos : oldRegion.getChunkPositions()) {
+            CHUNK_TO_REGION_ID.remove(new DimensionChunkKey(oldRegion.getDimension(), chunkPos), id);
         }
     }
 
@@ -79,16 +70,16 @@ public class ClientRegionManager {
         return new DimensionChunkKey(world.getRegistryKey().getValue().toString(), chunkPos);
     }
 
-    private static boolean isCurrentDimension(RegionSyncPayload region) {
+    private static boolean isCurrentDimension(ClientRegion region) {
         ClientWorld world = MinecraftClient.getInstance().world;
-        return region != null && world != null && region.dimension().equals(world.getRegistryKey().getValue().toString());
+        return region != null && world != null && region.getDimension().equals(world.getRegistryKey().getValue().toString());
     }
 
-    public static Collection<RegionSyncPayload> getRegions() {
+    public static Collection<ClientRegion> getRegions() {
         ClientWorld world = MinecraftClient.getInstance().world;
         if (world == null) return java.util.List.of();
         String dimension = world.getRegistryKey().getValue().toString();
-        return REGIONS.values().stream().filter(region -> region.dimension().equals(dimension)).toList();
+        return REGIONS.values().stream().filter(region -> region.getDimension().equals(dimension)).toList();
     }
 
 }

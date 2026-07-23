@@ -16,7 +16,7 @@ public final class RegionBlockEventProcessor {
     private RegionBlockEventProcessor() {
     }
 
-    public static void process(ServerWorld world, Predicate<RegionTickManager> shouldProcess) {
+    public static void process(ServerWorld world, Predicate<Region> shouldProcess) {
         ServerWorldAccessor accessor = (ServerWorldAccessor) world;
         ObjectLinkedOpenHashSet<BlockEvent> queue = accessor.getSyncedBlockEventQueue();
         if (queue.isEmpty()) return;
@@ -24,7 +24,7 @@ public final class RegionBlockEventProcessor {
         List<BlockEvent> deferred = new ArrayList<>(queue.size());
         while (!queue.isEmpty()) {
             BlockEvent event = queue.removeFirst();
-            RegionTickManager owner = RegionsManager.getRegionByChunk(world, ChunkPos.toLong(event.pos()));
+            Region owner = RegionsManager.getRegionByChunk(world, ChunkPos.toLong(event.pos()));
             if (!shouldProcess.test(owner) || !world.shouldTickBlockPos(event.pos())) {
                 deferred.add(event);
                 continue;

@@ -1,6 +1,6 @@
 package com.abelian.client.mixin;
 
-import com.abelian.network.RegionSyncPayload;
+import com.abelian.client.ClientRegion;
 import com.abelian.client.ClientRegionManager;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.*;
@@ -52,8 +52,8 @@ public abstract class WorldRendererMixin {
 
 
         //渲染已选择的区域
-        for (RegionSyncPayload region : ClientRegionManager.getRegions()) {
-            if (region.chunkPositions() == null || region.chunkPositions().isEmpty()) continue;
+        for (ClientRegion region : ClientRegionManager.getRegions()) {
+            if (region.getChunkPositions() == null || region.getDimension().isEmpty()) continue;
 
             float r2, g2, b2;
 
@@ -74,8 +74,8 @@ public abstract class WorldRendererMixin {
                 b2 = 0.0f;
             }
 
-            for (long posLong : region.chunkPositions()) {
-                renderChunkLines(matrices, lineConsumer, posLong, -64, 320, r2, g2, b2, region.chunkPositions());
+            for (long posLong : region.getChunkPositions()) {
+                renderChunkLines(matrices, lineConsumer, posLong, -64, 320, r2, g2, b2, region.getChunkPositions());
             }
         }
     }

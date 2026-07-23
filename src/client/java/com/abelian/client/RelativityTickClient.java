@@ -90,7 +90,6 @@ public class RelativityTickClient implements ClientModInitializer {
 				}
 			}
 
-
 		});
 
 	}

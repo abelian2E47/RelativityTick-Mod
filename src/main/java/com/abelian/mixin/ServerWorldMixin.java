@@ -2,7 +2,7 @@ package com.abelian.mixin;
 
 import com.abelian.ServerTickBridge;
 
-import com.abelian.regionTick.RegionTickManager;
+import com.abelian.regionTick.Region;
 import com.abelian.regionTick.RegionsManager;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.PlayerEntity;
@@ -21,7 +21,7 @@ public abstract class ServerWorldMixin {
         if (entity instanceof PlayerEntity) return;
         if (entity.getWorld().isClient()) return;
         long chunkPosLong = ChunkPos.toLong(entity.getBlockPos());
-        RegionTickManager region = RegionsManager.getRegionByChunk((ServerWorld) entity.getWorld(), chunkPosLong);
+        Region region = RegionsManager.getRegionByChunk((ServerWorld) entity.getWorld(), chunkPosLong);
 
         if (region != null && region.isControlled()) {
             if (!region.isRunning()) {

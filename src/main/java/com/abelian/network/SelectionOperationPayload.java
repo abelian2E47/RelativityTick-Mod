@@ -1,5 +1,6 @@
-package com.abelian;
+package com.abelian.network;
 
+import com.abelian.RelativityTick;
 import net.minecraft.network.PacketByteBuf;
 import net.minecraft.network.codec.PacketCodec;
 import net.minecraft.network.codec.PacketCodecs;

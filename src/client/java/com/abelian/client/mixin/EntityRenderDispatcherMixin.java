@@ -1,10 +1,6 @@
 package com.abelian.client.mixin;
 
-import com.abelian.client.ClientRegionManager;
-import com.abelian.client.ClientRegionTicker;
-import com.abelian.client.EntityInterpolationManager;
-import com.abelian.client.RegionTickDeltaManager;
-import com.abelian.network.RegionSyncPayload;
+import com.abelian.client.*;
 import net.minecraft.client.render.Camera;
 import net.minecraft.client.world.ClientWorld;
 import net.minecraft.client.render.entity.EntityRenderDispatcher;
@@ -18,9 +14,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyArgs;
 import org.spongepowered.asm.mixin.injection.invoke.arg.Args;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-
 @Mixin(EntityRenderDispatcher.class)
 public class EntityRenderDispatcherMixin {
 
@@ -31,11 +24,11 @@ public class EntityRenderDispatcherMixin {
         Entity entity = args.get(0);
         if (entity instanceof PlayerEntity) return;
         ChunkPos entityChunkPos = entity.getChunkPos();
-        RegionSyncPayload region = entity.getWorld() instanceof ClientWorld world ? ClientRegionManager.getRegion(world, entityChunkPos) : null;
+        ClientRegion region = entity.getWorld() instanceof ClientWorld world ? ClientRegionManager.getRegion(world, entityChunkPos) : null;
         if (region != null && region.isControlled()) {
-            String regionID = region.id();
+            String regionID = region.getId();
             float tickDelta = RegionTickDeltaManager.getTickDelta(regionID);
-            if (ClientRegionManager.isRegionFrozenAndIdle(region) && !RegionTickDeltaManager.hasActiveInterpolation(regionID)) {
+            if (!region.isRunning() && !RegionTickDeltaManager.hasActiveInterpolation(regionID)) {
                 args.set(4, 1.0f);
                 return;
             }

@@ -5,9 +5,9 @@ import com.abelian.network.EntityStateRecord;
 import com.abelian.network.RegionEntitySyncPayload;
 import com.abelian.network.RegionStepPayload;
 import com.abelian.network.RegionSyncPayload;
-import com.abelian.regionTick.RegionTickManager;
+import com.abelian.regionTick.Region;
 import com.abelian.regionTick.RegionsManager;
-import com.abelian.regionTick.RegionTickManager.RegionState;
+import com.abelian.regionTick.Region.RegionState;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
@@ -22,6 +22,7 @@ import net.minecraft.command.CommandRegistryAccess;
 import net.minecraft.fluid.Fluid;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
+import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
@@ -39,11 +40,11 @@ import java.util.function.BiConsumer;
 
 public class ServerCommands {
 
-    private record RegionCommandContext(ServerCommandSource source, RegionTickManager manager, String id, ServerWorld world) {
+    private record RegionCommandContext(ServerCommandSource source, Region manager, String id, ServerWorld world) {
         public static RegionCommandContext of(CommandContext<ServerCommandSource> ctx) {
             ServerCommandSource source = ctx.getSource();
             String id = StringArgumentType.getString(ctx, "id");
-            RegionTickManager manager = RegionsManager.getRegion(id);
+            Region manager = RegionsManager.getRegion(id);
             ServerWorld world = manager == null ? source.getWorld() : source.getServer().getWorld(manager.getDimension());
             return new RegionCommandContext(source, manager, id, world == null ? source.getWorld() : world);
         }
@@ -240,6 +241,14 @@ public class ServerCommands {
         if (!dash) {
             int totalPending = rcc.manager.getPendingSteps() + steps;
             rcc.manager.setPendingSteps(totalPending);
+
+            //发送step同步包
+            RegionStepPayload regionStepPayload = new RegionStepPayload(rcc.id, totalPending);
+
+            for (ServerPlayerEntity player : rcc.source.getWorld().getPlayers()) {
+                ServerPlayNetworking.send(player, regionStepPayload);
+            }
+
             sendFeedback(rcc.source, rcc.id, "relativitytick.command.region.stepping", steps);
             syncRegionState(rcc);
             return 1;
@@ -328,7 +337,7 @@ public class ServerCommands {
         return 1;
     }
 
-    private static void sendRegionStatus(ServerCommandSource source, String id, RegionTickManager mgr) {
+    private static void sendRegionStatus(ServerCommandSource source, String id, Region mgr) {
         boolean controlled = mgr.isControlled();
         boolean running = controlled && mgr.isRunning();
         int pending = mgr.getPendingSteps();
@@ -393,7 +402,7 @@ public class ServerCommands {
     }
 
     private static void sendStepPayload(RegionCommandContext rcc, int steps) {
-        RegionStepPayload payload = new RegionStepPayload(rcc.id, steps, rcc.manager.getAccumulator());
+        RegionStepPayload payload = new RegionStepPayload(rcc.id, steps);
         sendToWorldPlayers(rcc.world, payload);
     }
 

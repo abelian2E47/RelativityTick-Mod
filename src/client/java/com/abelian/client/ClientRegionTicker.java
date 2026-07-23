@@ -6,19 +6,17 @@ import com.abelian.client.mixin.ClientWorldAccessor;
 import com.abelian.network.EntityStateRecord;
 import com.abelian.network.RegionEntitySyncPayload;
 import com.abelian.network.RegionStepPayload;
-import com.abelian.network.RegionSyncPayload;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.world.ClientWorld;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.server.world.ServerWorld;
 import net.minecraft.world.entity.ClientEntityManager;
 import net.minecraft.world.entity.SectionedEntityCache;
 import net.minecraft.util.math.Vec3d;
 
-import java.util.Map;
-import java.util.HashMap;
-import java.util.Set;
-import java.util.List;
+import java.util.*;
 
 import static com.abelian.client.EntityInterpolationManager.ENTITY_INTERPOLATIONS;
 
@@ -36,23 +34,37 @@ public class ClientRegionTicker {
     }
 
     public static void register(){
+        //接收step同步包
         ClientPlayNetworking.registerGlobalReceiver(RegionStepPayload.ID, (payload, context) -> context.client().execute(() -> {
             ClientWorld world = context.client().world;
             if (world == null) return;
 
-            RegionSyncPayload region = ClientRegionManager.getRegion(payload.regionID());
+            ClientRegion region = ClientRegionManager.getRegion(payload.regionID());
             if (region == null) return;
 
-            tickRegion(world, region.id(), region.chunkPositions(), payload.steps());
-            RegionTickDeltaManager.recordTickStep(region.id(), region.rate(), payload.accumulatorPhase());
+            RegionTickDeltaManager.recordTickStep(region.getId());
         }));
 
+        //接收实体同步包
         ClientPlayNetworking.registerGlobalReceiver(RegionEntitySyncPayload.ID, (payload, context) -> context.client().execute(() -> {
             ClientWorld world = context.client().world;
             if (world == null) return;
 
             applyEntityStates(world, payload.entities());
         }));
+
+        //step
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            //遍历region
+            for (ClientRegion region : ClientRegionManager.getRegions()) {
+                ServerWorld world = Objects.requireNonNull(client.getServer()).getWorld(region.getDimension());
+                if (world == null) continue;
+
+                if (region.isControlled() && region.isStepping() && !region.isRunning()) {
+
+                }
+            }
+        });
     }
 
     private static void applyEntityStates(ClientWorld world, List<EntityStateRecord> states) {
@@ -71,25 +83,24 @@ public class ClientRegionTicker {
 
         for (int i = 0; i < stepsTaken; i++) {
             RegionTickContext.begin(world, nextRegionTickTime++);
-            try {
-                collectTickingEntities(world, chunkSet);
-                for (Entity entity : ENTITY_TICK_BUFFER) {
-                    if (entity.isRemoved()) continue;
 
-                    previousPositions.putIfAbsent(entity.getId(), entity.getPos());
-                    tickedEntities.put(entity.getId(), entity);
-                    ClientTickBridge.setCustomTickInProgress(true);
-                    try {
-                        ((ClientWorldAccessor) world).invokeTickEntity(entity);
-                    } finally {
-                        ClientTickBridge.setCustomTickInProgress(false);
-                    }
-                }
-                ENTITY_TICK_BUFFER.clear();
-                ClientRegionBlockEntityTicker.tickBlockEntities(world, chunkSet);
-            } finally {
-                RegionTickContext.end();
+            collectTickingEntities(world, chunkSet);
+            for (Entity entity : ENTITY_TICK_BUFFER) {
+                if (entity.isRemoved()) continue;
+
+                previousPositions.putIfAbsent(entity.getId(), entity.getPos());
+                tickedEntities.put(entity.getId(), entity);
+
+                ClientTickBridge.setCustomTickInProgress(true);
+                // 客户端tick实体
+                ((ClientWorldAccessor) world).invokeTickEntity(entity);
+                System.out.println(entity.toString() + "has been ticked");
+                ClientTickBridge.setCustomTickInProgress(false);
             }
+            ENTITY_TICK_BUFFER.clear();
+            ClientRegionBlockEntityTicker.tickBlockEntities(world, chunkSet);
+
+            RegionTickContext.end();
         }
 
         for (Map.Entry<Integer, Entity> entry : tickedEntities.entrySet()) {

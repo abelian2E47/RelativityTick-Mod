@@ -1,6 +1,6 @@
 package com.abelian.mixin;
 
-import com.abelian.regionTick.RegionTickManager;
+import com.abelian.regionTick.Region;
 import com.abelian.regionTick.RegionsManager;
 import net.minecraft.registry.Registry;
 import net.minecraft.world.World;
@@ -30,7 +30,7 @@ public abstract class WorldChunkMixin extends Chunk {
     private void onCanTickBlockEntity(BlockPos pos, CallbackInfoReturnable<Boolean> cir) {
         World world = ((WorldChunk) (Object) this).getWorld();
         long posLong = this.getPos().toLong();
-        RegionTickManager manager = world instanceof net.minecraft.server.world.ServerWorld serverWorld
+        Region manager = world instanceof net.minecraft.server.world.ServerWorld serverWorld
                 ? RegionsManager.getRegionByChunk(serverWorld, posLong)
                 : null;
 

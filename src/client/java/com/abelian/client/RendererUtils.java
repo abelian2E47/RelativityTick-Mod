@@ -17,52 +17,52 @@ import java.util.Set;
 
 public class RendererUtils {
 
-    public static void renderTexts(List<MutableText> infoTexts, Entity entity, MatrixStack matrices, VertexConsumerProvider vertexConsumer) {
-
-        TextRenderer textRenderer = MinecraftClient.getInstance().textRenderer;
-        float height = entity.getHeight() + 1;
-        float y = 10 - (infoTexts.size() * 10);
-
-        Camera camera = MinecraftClient.getInstance().gameRenderer.getCamera();
-        float cameraYaw = camera.getYaw();
-        float cameraPitch = camera.getPitch();
-
-        matrices.push();
-        matrices.translate(0.0, height, 0.0);
-        matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(-cameraYaw + 180));
-        matrices.multiply(RotationAxis.POSITIVE_X.rotationDegrees(-cameraPitch));
-        matrices.scale(0.03f, -0.03f, 0.03f);
-        Matrix4f matrix4f = matrices.peek().getPositionMatrix();
-
-        float y1 = y;
-        for (Text infoText : infoTexts) {
-            float x = -textRenderer.getWidth(infoText) / 2f;
-            textRenderer.draw(
-                    infoText, x, y1, -2130706433, false,
-                    matrix4f, vertexConsumer,
-                    TextRenderer.TextLayerType.SEE_THROUGH,
-                    0x4CC8C8C8,
-                    0xF000F0
-            );
-            y1 += 10;
-        }
-
-
-        float y2 = y;
-        for (Text infoText : infoTexts) {
-            float x = -textRenderer.getWidth(infoText) / 2f;
-            textRenderer.draw(
-                    infoText, x, y2, 0xFFFFFFFF, false,
-                    matrix4f, vertexConsumer,
-                    TextRenderer.TextLayerType.NORMAL,
-                    0, 0xF000F0
-            );
-            y2 += 10;
-        }
-
-        matrices.pop();
-
-    }
+//    public static void renderTexts(List<MutableText> infoTexts, Entity entity, MatrixStack matrices, VertexConsumerProvider vertexConsumer) {
+//
+//        TextRenderer textRenderer = MinecraftClient.getInstance().textRenderer;
+//        float height = entity.getHeight() + 1;
+//        float y = 10 - (infoTexts.size() * 10);
+//
+//        Camera camera = MinecraftClient.getInstance().gameRenderer.getCamera();
+//        float cameraYaw = camera.getYaw();
+//        float cameraPitch = camera.getPitch();
+//
+//        matrices.push();
+//        matrices.translate(0.0, height, 0.0);
+//        matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(-cameraYaw + 180));
+//        matrices.multiply(RotationAxis.POSITIVE_X.rotationDegrees(-cameraPitch));
+//        matrices.scale(0.03f, -0.03f, 0.03f);
+//        Matrix4f matrix4f = matrices.peek().getPositionMatrix();
+//
+//        float y1 = y;
+//        for (Text infoText : infoTexts) {
+//            float x = -textRenderer.getWidth(infoText) / 2f;
+//            textRenderer.draw(
+//                    infoText, x, y1, -2130706433, false,
+//                    matrix4f, vertexConsumer,
+//                    TextRenderer.TextLayerType.SEE_THROUGH,
+//                    0x4CC8C8C8,
+//                    0xF000F0
+//            );
+//            y1 += 10;
+//        }
+//
+//
+//        float y2 = y;
+//        for (Text infoText : infoTexts) {
+//            float x = -textRenderer.getWidth(infoText) / 2f;
+//            textRenderer.draw(
+//                    infoText, x, y2, 0xFFFFFFFF, false,
+//                    matrix4f, vertexConsumer,
+//                    TextRenderer.TextLayerType.NORMAL,
+//                    0, 0xF000F0
+//            );
+//            y2 += 10;
+//        }
+//
+//        matrices.pop();
+//
+//    }
 
     public static void renderChunkLines(MatrixStack matrices, VertexConsumer lineConsumer, long currentPos, float minY, float maxY, float r,float g, float b,Set<Long> chunks) {
         Matrix4f matrix4f = matrices.peek().getPositionMatrix();
