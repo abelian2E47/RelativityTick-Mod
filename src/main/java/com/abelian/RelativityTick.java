@@ -16,6 +16,7 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.block.Block;
 import net.minecraft.fluid.Fluid;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
@@ -36,11 +37,10 @@ public class RelativityTick implements ModInitializer {
 	public static final Identifier REGION_STEP_PACKET_ID = Identifier.of(MOD_ID, "region_step_packet");
 	public static final Identifier REGION_ENTITY_SYNC_PACKET_ID = Identifier.of(MOD_ID, "region_entity_sync_packet");
 
-    public static long tickStartTime = 0;
-    //记录上次发包时的TPS，用以TPS的同步
+    private static final double REGION_TPS_RELATIVE_SEND_THRESHOLD = 0.01;
+    private static final int REGION_TPS_STABLE_SEND_GT = 20;
     private static final Map<String, Double> LAST_SENT_REGION_TPS = new HashMap<>();
-    //TPS相差1时重新同步
-    private static final double REGION_TPS_SEND_THRESHOLD = 1;
+    private static final Map<String, Integer> REGION_TPS_SEND_CANDIDATE_TICKS = new HashMap<>();
 
 	@Override
 	public void onInitialize() {
@@ -65,6 +65,7 @@ public class RelativityTick implements ModInitializer {
             RegionsManager.clear();
             RelativityTickUtils.clear();
             LAST_SENT_REGION_TPS.clear();
+            REGION_TPS_SEND_CANDIDATE_TICKS.clear();
         });
 
         ServerChunkEvents.CHUNK_LOAD.register((world, chunk) ->
@@ -81,58 +82,28 @@ public class RelativityTick implements ModInitializer {
                     RegionsManager.createRegion(id, chunkPositions, context.player().getServerWorld());
 				}));
 
-        //记录tick开始的时间用作mspt计算
-        ServerTickEvents.END_SERVER_TICK.register(server -> tickStartTime = System.nanoTime());
-
         //step
-        ServerTickEvents.END_SERVER_TICK.register(server -> {
+        ServerTickEvents.START_SERVER_TICK.register(server -> {
             for (String id : RegionsManager.getRegionIdsByPriority()) {
                 Region region = RegionsManager.getRegion(id);
                 ServerWorld world = server.getWorld(region.getDimension());
                 if (world == null) continue;
-
-                WorldTickScheduler<Block> blockTickScheduler = world.getBlockTickScheduler();
-                WorldTickScheduler<Fluid> fluidTickScheduler = world.getFluidTickScheduler();
-                BiConsumer<BlockPos, Block> blockTicker = (pos, block) -> world.getBlockState(pos).scheduledTick(world, pos, world.getRandom());
-                BiConsumer<BlockPos, Fluid> fluidTicker = (pos, fluid) -> world.getFluidState(pos).onScheduledTick(world, pos, fluid.getDefaultState().getBlockState());
-
                 if (region.isControlled() && region.isStepping() && !region.isRunning()) {
-                    long regionStartNano = System.nanoTime();
-                    long regionBudgetNano = (long)(region.getTickDurationLimit() * 1_000_000L);
-                    double rate = region.getRate();
-                    double[] accRef = {region.getAccumulator()};
-                    int stepsToTake = RelativityTickUtils.accumulateSteps(rate, accRef);
-                    int remaining = region.getPendingSteps();
-                    int stepsTaken = 0;
-
-                    region.setReachedMsptLimit(false);
-                    region.setReachTickDurationLimit(false);
+                    RegionRunResult result = runRegionTicks(server, region, world, region.getPendingSteps(), false);
+                    int remaining = result.remainingSteps();
+                    if (result.stepsTaken() > 0) {
+                        region.recordTickDuration(result.durationNano());
+                    }
 
                     Map<Integer, EntityStateRecord> entityStates = new LinkedHashMap<>();
-                    while (regionBudgetNano > 0 && stepsTaken < stepsToTake && remaining > 0) {
-                        region.tickRegion(world, blockTickScheduler, blockTicker, fluidTickScheduler, fluidTicker);
-                        stepsTaken++;
-                        remaining--;
-
-                        if (System.nanoTime() - tickStartTime >= RelativityTickConfig.getMaxMspt() * 1_000_000L) {
-                            region.setReachedMsptLimit(true);
-                            break;
-                        }
-
-                        if (System.nanoTime() - regionStartNano >= regionBudgetNano) {
-                            region.setReachTickDurationLimit(true);
-                            break;
-                        }
-                    }
-                    if (stepsTaken > 0) {
+                    if (result.stepsTaken() > 0) {
                         for (EntityStateRecord state : region.collectEntityStates(world)) {
                             entityStates.put(state.entityId(), state);
                         }
                     }
 
-                    region.setAccumulator(accRef[0]);
                     region.setPendingSteps(remaining);
-                    if (stepsTaken > 0 && remaining == 0) {
+                    if (result.stepsTaken() > 0 && remaining == 0) {
                         RegionSyncPayload syncPayload = new RegionSyncPayload(id, region.getDimensionId(), region.getChunkPositions(),
                                 region.getState(), region.getRate());
                         RegionEntitySyncPayload entityPayload = new RegionEntitySyncPayload(id, new ArrayList<>(entityStates.values()));
@@ -146,7 +117,7 @@ public class RelativityTick implements ModInitializer {
         });
 
         //按rate运行
-        ServerTickEvents.END_SERVER_TICK.register(server -> {
+        ServerTickEvents.START_SERVER_TICK.register(server -> {
             for (String id : RegionsManager.getRegionIdsByPriority()) {
                 Region region = RegionsManager.getRegion(id);
                 if (!region.isRunning() || !region.isControlled()) continue;
@@ -154,43 +125,13 @@ public class RelativityTick implements ModInitializer {
                 ServerWorld world = server.getWorld(region.getDimension());
                 if (world == null) continue;
 
-                long regionStartNano = System.nanoTime();
-                WorldTickScheduler<Block> blockScheduler = world.getBlockTickScheduler();
-                WorldTickScheduler<Fluid> fluidScheduler = world.getFluidTickScheduler();
-                BiConsumer<BlockPos, Block> bTicker = (pos, block) -> world.getBlockState(pos).scheduledTick(world, pos, world.getRandom());
-                BiConsumer<BlockPos, Fluid> fTicker = (pos, fluid) -> world.getFluidState(pos).onScheduledTick(world, pos, fluid.getDefaultState().getBlockState());
-
-                double rate = region.getRate();
-                double[] accRef = {region.getAccumulator()};
-                int stepsToTake = RelativityTickUtils.accumulateSteps(rate, accRef);
-                int stepsTaken = 0;
-                long regionBudgetNano = (long)(region.getTickDurationLimit() * 1_000_000L);
-
-                region.setReachedMsptLimit(false);
-                region.setReachTickDurationLimit(false);
-
-                while (regionBudgetNano > 0 && stepsTaken < stepsToTake) {
-                    region.tickRegion(world, blockScheduler, bTicker, fluidScheduler, fTicker);
-                    stepsTaken++;
-
-                    if (region.getPendingSteps() > 0) {
-                        region.setPendingSteps(region.getPendingSteps() - 1);
-                    }
-
-                    if (System.nanoTime() - tickStartTime >= RelativityTickConfig.getMaxMspt() * 1_000_000L) {
-                        region.setReachedMsptLimit(true);
-                        break;
-                    }
-
-                    if (System.nanoTime() - regionStartNano >= regionBudgetNano) {
-                        region.setReachTickDurationLimit(true);
-                        break;
-                    }
+                RegionRunResult result = runRegionTicks(server, region, world, Integer.MAX_VALUE, true);
+                if (result.stepsTaken() > 0) {
+                    region.recordTickDuration(result.durationNano());
+                } else {
+                    region.recordTickDuration(0L);
                 }
-
-                long regionDurationNano = System.nanoTime() - regionStartNano;
-                region.recordTickDuration(regionDurationNano);
-                region.updateTickStats();
+                region.recordGlobalTickSteps(result.stepsTaken());
             }
         });
 
@@ -200,20 +141,86 @@ public class RelativityTick implements ModInitializer {
                 ServerWorld world = server.getWorld(region.getDimension());
                 if (world == null || !region.isControlled()) continue;
 
-                double currentTPS = region.getLastMeasuredTPS();
-                Double lastTPS = LAST_SENT_REGION_TPS.get(id);
-                boolean shouldSend = lastTPS == null || Math.abs(currentTPS - lastTPS) >= REGION_TPS_SEND_THRESHOLD;
+                double currentTPS = region.getTPS();
+                if (!shouldSendRegionTps(id, region, currentTPS)) continue;
 
-                if (!shouldSend) continue;
-
-                RegionTPSPayload payload = new RegionTPSPayload(id, region.getRegionTickDuration(), currentTPS);
-                for (ServerPlayerEntity player : world.getPlayers()) {
-                    ServerPlayNetworking.send(player, payload);
-                }
-
+                sendRegionTpsAndEntities(id, region, world, currentTPS);
                 LAST_SENT_REGION_TPS.put(id, currentTPS);
+                REGION_TPS_SEND_CANDIDATE_TICKS.remove(id);
             }
         });
 	}
+
+    private static boolean shouldSendRegionTps(String id, Region region, double currentTPS) {
+        Double lastTPS = LAST_SENT_REGION_TPS.get(id);
+        if (lastTPS == null) return true;
+        if (!region.hasFullTpsSampleWindow()) return false;
+
+        double denominator = Math.max(Math.abs(lastTPS), 1.0);
+        double relativeDiff = Math.abs(currentTPS - lastTPS) / denominator;
+        if (relativeDiff < REGION_TPS_RELATIVE_SEND_THRESHOLD) {
+            REGION_TPS_SEND_CANDIDATE_TICKS.remove(id);
+            return false;
+        }
+
+        int candidateTicks = REGION_TPS_SEND_CANDIDATE_TICKS.getOrDefault(id, 0) + 1;
+        REGION_TPS_SEND_CANDIDATE_TICKS.put(id, candidateTicks);
+        return candidateTicks >= REGION_TPS_STABLE_SEND_GT;
+    }
+
+    private static void sendRegionTpsAndEntities(String id, Region region, ServerWorld world, double currentTPS) {
+        RegionTPSPayload tpsPayload = new RegionTPSPayload(id, region.getRegionTickDuration(), currentTPS);
+        RegionEntitySyncPayload entityPayload = new RegionEntitySyncPayload(id, new ArrayList<>(region.collectEntityStates(world)));
+        for (ServerPlayerEntity player : world.getPlayers()) {
+            ServerPlayNetworking.send(player, tpsPayload);
+            ServerPlayNetworking.send(player, entityPayload);
+        }
+    }
+
+    private static RegionRunResult runRegionTicks(MinecraftServer server, Region region, ServerWorld world, int maxSteps, boolean consumePendingSteps) {
+        long regionStartNano = System.nanoTime();
+        long regionBudgetNano = (long)(region.getTickDurationLimit() * 1_000_000L);
+        WorldTickScheduler<Block> blockScheduler = world.getBlockTickScheduler();
+        WorldTickScheduler<Fluid> fluidScheduler = world.getFluidTickScheduler();
+        BiConsumer<BlockPos, Block> blockTicker = (pos, block) -> world.getBlockState(pos).scheduledTick(world, pos, world.getRandom());
+        BiConsumer<BlockPos, Fluid> fluidTicker = (pos, fluid) -> world.getFluidState(pos).onScheduledTick(world, pos, fluid.getDefaultState().getBlockState());
+
+        double[] accumulator = {region.getAccumulator()};
+        int stepsToTake = RelativityTickUtils.accumulateSteps(region.getRate(), accumulator);
+        int stepsTaken = 0;
+        int remainingSteps = maxSteps;
+        long regionTickDurationNano = 0L;
+
+        region.setReachedMsptLimit(false);
+        region.setReachTickDurationLimit(false);
+
+        while (regionBudgetNano > 0 && stepsTaken < stepsToTake && remainingSteps > 0) {
+            long tickStartNano = System.nanoTime();
+            region.tickRegion(world, blockScheduler, blockTicker, fluidScheduler, fluidTicker);
+            regionTickDurationNano += System.nanoTime() - tickStartNano;
+            stepsTaken++;
+            remainingSteps--;
+
+            if (consumePendingSteps && region.getPendingSteps() > 0) {
+                region.setPendingSteps(region.getPendingSteps() - 1);
+            }
+
+            if (RelativityTickUtils.getServerMspt(server) >= RelativityTickConfig.getMaxMspt()) {
+                region.setReachedMsptLimit(true);
+                break;
+            }
+
+            if (System.nanoTime() - regionStartNano >= regionBudgetNano) {
+                region.setReachTickDurationLimit(true);
+                break;
+            }
+        }
+
+        region.setAccumulator(accumulator[0]);
+        return new RegionRunResult(stepsTaken, remainingSteps, regionTickDurationNano);
+    }
+
+    private record RegionRunResult(int stepsTaken, int remainingSteps, long durationNano) {
+    }
 
 }

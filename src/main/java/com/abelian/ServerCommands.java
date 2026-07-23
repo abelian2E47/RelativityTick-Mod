@@ -1,10 +1,7 @@
 package com.abelian;
 
 import com.abelian.config.RelativityTickConfig;
-import com.abelian.network.EntityStateRecord;
-import com.abelian.network.RegionEntitySyncPayload;
-import com.abelian.network.RegionStepPayload;
-import com.abelian.network.RegionSyncPayload;
+import com.abelian.network.*;
 import com.abelian.regionTick.Region;
 import com.abelian.regionTick.RegionsManager;
 import com.abelian.regionTick.Region.RegionState;
@@ -285,6 +282,7 @@ public class ServerCommands {
         RegionsManager.savePersistentState();
         sendFeedback(rcc.source, rcc.id, wasControlled ? "relativitytick.command.region.rate_set" : "relativitytick.command.region.taken_over_rate_set", formatConfigValue(rate));
         syncRegionState(rcc);
+        syncRegionTPS(rcc);
         return 1;
     }
 
@@ -317,7 +315,6 @@ public class ServerCommands {
         rcc.source.sendFeedback(() -> Text.translatable("relativitytick.command.region.removed", Text.literal(rcc.id).formatted(Formatting.GOLD)), false);
         return 1;
     }
-
 
     private static int getAllRegionStatus(ServerCommandSource source) {
         if (RegionsManager.getRegionIds().isEmpty()) {
@@ -358,7 +355,7 @@ public class ServerCommands {
 
         if (running) {
             source.sendFeedback(() -> Text.translatable("relativitytick.command.status.tps_rate",
-                    Text.literal(String.format("%.2f", mgr.getLastMeasuredTPS())).formatted(Formatting.GREEN),
+                    Text.literal(String.format("%.2f", mgr.getTPS())).formatted(Formatting.GREEN),
                     Text.literal(String.format("%.2f", mgr.getRate())).formatted(Formatting.GREEN)), false);
 
         } else {
@@ -376,7 +373,7 @@ public class ServerCommands {
                     Text.literal(String.valueOf(pending)).formatted(pending > 0 ? Formatting.GOLD : Formatting.GRAY)), false);
         }
 
-        //达到限制提醒
+        //提示
         if (mgr.hasReachedMsptLimit()) {
             source.sendFeedback(() -> Text.translatable("relativitytick.command.warning.mspt_slowdown").formatted(Formatting.ITALIC, Formatting.RED), false);
         }else if (mgr.hasReachedTickDurationLimit()){
@@ -398,6 +395,12 @@ public class ServerCommands {
                 rcc.manager.getState(), rcc.manager.getRate());
         sendToWorldPlayers(rcc.world, payload);
     }
+
+    private static void syncRegionTPS(RegionCommandContext rcc) {
+        RegionTPSPayload payload = new RegionTPSPayload(rcc.id, rcc.manager.getRegionTickDuration(), rcc.manager.getTPS());
+        sendToWorldPlayers(rcc.world, payload);
+    }
+
 
     private static void sendStepPayload(RegionCommandContext rcc, int steps) {
         RegionStepPayload payload = new RegionStepPayload(rcc.id, steps);

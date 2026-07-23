@@ -48,14 +48,10 @@ public class RelativityTickUtils {
     }
 
 
-    //区域每个全局游戏刻消耗时间、tps计算
-    public static double computeMsPerGameTick(long totalNano, int tickCount) {
-        if (tickCount <= 0) return 0.0;
-        return (totalNano / (double) tickCount) / 1_000_000.0;
+
+    public static double getServerMspt(MinecraftServer server) {
+        double MSPT = server.getAverageTickTime();
+        return truncate(MSPT,4);
     }
 
-    public static double computeTPS(int stepsThisSecond, long elapsedMs) {
-        if (elapsedMs <= 0) return 0.0;
-        return (stepsThisSecond * 1000.0) / elapsedMs;
-    }
 }

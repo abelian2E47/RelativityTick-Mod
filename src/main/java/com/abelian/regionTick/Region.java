@@ -1,7 +1,6 @@
 package com.abelian.regionTick;
 
 import com.abelian.RegionTickContext;
-import com.abelian.RelativityTickUtils;
 import com.abelian.network.EntityStateRecord;
 import net.minecraft.block.Block;
 import net.minecraft.fluid.Fluid;
@@ -38,16 +37,18 @@ public class Region {
     private int regionPriority = 1;
     private RegionState state = RegionState.RELEASED;
 
-    private long totalNanoTimeThisSecond = 0;
-    private int stepsThisSecond = 0;
-    private int ticksProcessedThisSecond = 0;
+    private static final int TPS_AVERAGE_WINDOW_GT = 100;
+    private final int[] recentStepCounts = new int[TPS_AVERAGE_WINDOW_GT];
+    private int recentStepCursor = 0;
+    private int recentStepSamples = 0;
+    private int recentStepTotal = 0;
     private double regionTPS = 0;
-    private float RegionTickDuration = 0;
+    private float regionTickDuration = 0;
 
     private boolean reachMsptLimit = false;
     private boolean reachTickDurationLimit = false;
 
-    private long lastStatTime = System.currentTimeMillis();
+    
 
     public Region(String id, RegistryKey<World> dimension, Set<Long> chunkPositions){
         this.id = id;
@@ -154,11 +155,11 @@ public class Region {
             for (ChunkTickManager chunk : region) {
                 chunk.tickBlockEntities(world);
             }
-            markStep();
         } finally {
             RegionTickContext.end();
         }
     }
+
     public List<EntityStateRecord> collectEntityStates(ServerWorld world) {
         List<EntityStateRecord> entityStates = new ArrayList<>();
         if (isControlled()) {
@@ -218,10 +219,6 @@ public class Region {
         return freezeStartTime;
     }
 
-    public long getVirtualTime() {
-        return freezeStartTime + stepped;
-    }
-
     public int getStepped(){
         return stepped;
     }
@@ -255,38 +252,26 @@ public class Region {
     public void  setReachTickDurationLimit(boolean reachTickDurationLimit) { this.reachTickDurationLimit = reachTickDurationLimit; }
 
     public void recordTickDuration(long totalNanoInTick) {
-        this.totalNanoTimeThisSecond += totalNanoInTick;
-        this.ticksProcessedThisSecond++; // 每次调用代表经历了一个 GT
+        this.regionTickDuration = (float)(totalNanoInTick / 1_000_000.0);
     }
 
-    public void markStep() {
-        this.stepsThisSecond++;
-    }
-
-    public void updateTickStats() {
-        long now = System.currentTimeMillis();
-        long elapsed = now - lastStatTime;
-
-        if (elapsed > 5000) {
-            this.stepsThisSecond = 0;
-            this.totalNanoTimeThisSecond = 0;
-            this.ticksProcessedThisSecond = 0;
-            this.lastStatTime = now;
-            return;
+    public void recordGlobalTickSteps(int stepsTaken) {
+        this.recentStepTotal -= this.recentStepCounts[this.recentStepCursor];
+        this.recentStepCounts[this.recentStepCursor] = stepsTaken;
+        this.recentStepTotal += stepsTaken;
+        this.recentStepCursor = (this.recentStepCursor + 1) % TPS_AVERAGE_WINDOW_GT;
+        if (this.recentStepSamples < TPS_AVERAGE_WINDOW_GT) {
+            this.recentStepSamples++;
         }
 
-        if (elapsed >= 1000) {
-            this.regionTPS = RelativityTickUtils.computeTPS(stepsThisSecond, elapsed);
-            this.RegionTickDuration = (float) RelativityTickUtils.computeMsPerGameTick(totalNanoTimeThisSecond, ticksProcessedThisSecond);
-
-            this.stepsThisSecond = 0;
-            this.totalNanoTimeThisSecond = 0;
-            this.ticksProcessedThisSecond = 0;
-            this.lastStatTime = now;
-        }
+        this.regionTPS = this.recentStepTotal * 20.0 / this.recentStepSamples;
     }
 
-    public double getLastMeasuredTPS() { return regionTPS; }
-    public float getRegionTickDuration() { return RegionTickDuration; }
+    public boolean hasFullTpsSampleWindow() {
+        return this.recentStepSamples >= TPS_AVERAGE_WINDOW_GT;
+    }
+
+    public double getTPS() { return regionTPS; }
+    public float getRegionTickDuration() { return regionTickDuration; }
 
 }
