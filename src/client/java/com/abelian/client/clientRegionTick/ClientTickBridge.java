@@ -1,4 +1,4 @@
-package com.abelian.client;
+package com.abelian.client.clientRegionTick;
 
 public class ClientTickBridge {
     private static final ThreadLocal<Boolean> CUSTOM_TICK_IN_PROGRESS =

@@ -1,7 +1,7 @@
 package com.abelian.client.mixin;
 
-import com.abelian.client.ClientRegion;
-import com.abelian.client.ClientRegionManager;
+import com.abelian.client.clientRegionTick.ClientRegion;
+import com.abelian.client.clientRegionTick.ClientRegionManager;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.*;
 import net.minecraft.client.util.math.MatrixStack;
@@ -14,7 +14,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 
-import static com.abelian.client.RendererUtils.renderChunkLines;
+import static com.abelian.client.render.RendererUtils.renderChunkLines;
 import static com.abelian.client.RelativityTickClient.selectChunks;
 
 @Mixin(WorldRenderer.class)

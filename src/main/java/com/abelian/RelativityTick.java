@@ -1,18 +1,18 @@
 package com.abelian;
 
+import com.abelian.config.RelativityTickConfig;
 import com.abelian.network.*;
 import com.abelian.regionTick.Region;
-import com.abelian.regionTick.RegionsManager;
 import com.abelian.regionTick.RegionPersistentState;
+import com.abelian.regionTick.RegionsManager;
 import net.fabricmc.api.ModInitializer;
-
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerChunkEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
-import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.block.Block;
 import net.minecraft.fluid.Fluid;
 import net.minecraft.server.network.ServerPlayerEntity;
@@ -21,23 +21,26 @@ import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.tick.WorldTickScheduler;
 
-import java.util.Set;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.BiConsumer;
-
-import com.abelian.config.RelativityTickConfig;
 
 public class RelativityTick implements ModInitializer {
 	public static final String MOD_ID = "relativitytick";
-	public static final Identifier SELECTION_OPERATION_PACKET_ID = Identifier.of(MOD_ID,"selection_operation_packet");
-	public static final Identifier REGION_SYNC_PACKET_ID = Identifier.of(MOD_ID,"region_sync_packet");
-	public static final Identifier REGION_TPS_SYNC_PACKET_ID = Identifier.of(MOD_ID,"region_tps_sync_packet");
-	public static final Identifier REGION_STEP_PACKET_ID = Identifier.of(MOD_ID,"region_step_packet");
-	public static final Identifier REGION_ENTITY_SYNC_PACKET_ID = Identifier.of(MOD_ID,"region_entity_sync_packet");
+	public static final Identifier SELECTION_OPERATION_PACKET_ID = Identifier.of(MOD_ID, "selection_operation_packet");
+	public static final Identifier REGION_SYNC_PACKET_ID = Identifier.of(MOD_ID, "region_sync_packet");
+	public static final Identifier REGION_TPS_SYNC_PACKET_ID = Identifier.of(MOD_ID, "region_tps_sync_packet");
+	public static final Identifier REGION_STEP_PACKET_ID = Identifier.of(MOD_ID, "region_step_packet");
+	public static final Identifier REGION_ENTITY_SYNC_PACKET_ID = Identifier.of(MOD_ID, "region_entity_sync_packet");
 
     public static long tickStartTime = 0;
+    //记录上次发包时的TPS，用以TPS的同步
+    private static final Map<String, Double> LAST_SENT_REGION_TPS = new HashMap<>();
+    //TPS相差1时重新同步
+    private static final double REGION_TPS_SEND_THRESHOLD = 1;
 
 	@Override
 	public void onInitialize() {
@@ -61,6 +64,7 @@ public class RelativityTick implements ModInitializer {
         ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
             RegionsManager.clear();
             RelativityTickUtils.clear();
+            LAST_SENT_REGION_TPS.clear();
         });
 
         ServerChunkEvents.CHUNK_LOAD.register((world, chunk) ->
@@ -82,7 +86,6 @@ public class RelativityTick implements ModInitializer {
 
         //step
         ServerTickEvents.END_SERVER_TICK.register(server -> {
-            //遍历region
             for (String id : RegionsManager.getRegionIdsByPriority()) {
                 Region region = RegionsManager.getRegion(id);
                 ServerWorld world = server.getWorld(region.getDimension());
@@ -111,13 +114,11 @@ public class RelativityTick implements ModInitializer {
                         stepsTaken++;
                         remaining--;
 
-                        //达到mspt上限自动终止步进
                         if (System.nanoTime() - tickStartTime >= RelativityTickConfig.getMaxMspt() * 1_000_000L) {
                             region.setReachedMsptLimit(true);
                             break;
                         }
 
-                        //达到区域最大耗时上限自动终止步进
                         if (System.nanoTime() - regionStartNano >= regionBudgetNano) {
                             region.setReachTickDurationLimit(true);
                             break;
@@ -131,16 +132,13 @@ public class RelativityTick implements ModInitializer {
 
                     region.setAccumulator(accRef[0]);
                     region.setPendingSteps(remaining);
-                    if (stepsTaken > 0) {
-
-                        if (remaining == 0) {
-                            RegionSyncPayload syncPayload = new RegionSyncPayload(id, region.getDimensionId(), region.getChunkPositions(),
-                                    region.getState(), region.getRate());
-                            RegionEntitySyncPayload entityPayload = new RegionEntitySyncPayload(id, new ArrayList<>(entityStates.values()));
-                            for (ServerPlayerEntity player : world.getPlayers()) {
-                                ServerPlayNetworking.send(player, syncPayload);
-                                ServerPlayNetworking.send(player, entityPayload);
-                            }
+                    if (stepsTaken > 0 && remaining == 0) {
+                        RegionSyncPayload syncPayload = new RegionSyncPayload(id, region.getDimensionId(), region.getChunkPositions(),
+                                region.getState(), region.getRate());
+                        RegionEntitySyncPayload entityPayload = new RegionEntitySyncPayload(id, new ArrayList<>(entityStates.values()));
+                        for (ServerPlayerEntity player : world.getPlayers()) {
+                            ServerPlayNetworking.send(player, syncPayload);
+                            ServerPlayNetworking.send(player, entityPayload);
                         }
                     }
                 }
@@ -151,7 +149,6 @@ public class RelativityTick implements ModInitializer {
         ServerTickEvents.END_SERVER_TICK.register(server -> {
             for (String id : RegionsManager.getRegionIdsByPriority()) {
                 Region region = RegionsManager.getRegion(id);
-
                 if (!region.isRunning() || !region.isControlled()) continue;
 
                 ServerWorld world = server.getWorld(region.getDimension());
@@ -180,13 +177,11 @@ public class RelativityTick implements ModInitializer {
                         region.setPendingSteps(region.getPendingSteps() - 1);
                     }
 
-                    //达到mspt上限自动终止步进
                     if (System.nanoTime() - tickStartTime >= RelativityTickConfig.getMaxMspt() * 1_000_000L) {
                         region.setReachedMsptLimit(true);
                         break;
                     }
 
-                    //达到区域最大耗时上限自动终止步进
                     if (System.nanoTime() - regionStartNano >= regionBudgetNano) {
                         region.setReachTickDurationLimit(true);
                         break;
@@ -203,14 +198,20 @@ public class RelativityTick implements ModInitializer {
             for (String id : RegionsManager.getRegionIdsByPriority()) {
                 Region region = RegionsManager.getRegion(id);
                 ServerWorld world = server.getWorld(region.getDimension());
-                if (world == null || world.getTime() % 20 != 0) continue;
+                if (world == null || !region.isControlled()) continue;
 
-                if (region.isControlled()) {
-                    RegionTPSPayload payload = new RegionTPSPayload(id, region.getRegionTickDuration(), region.getRate());
-                    for (ServerPlayerEntity player : world.getPlayers()) {
-                        ServerPlayNetworking.send(player, payload);
-                    }
+                double currentTPS = region.getLastMeasuredTPS();
+                Double lastTPS = LAST_SENT_REGION_TPS.get(id);
+                boolean shouldSend = lastTPS == null || Math.abs(currentTPS - lastTPS) >= REGION_TPS_SEND_THRESHOLD;
+
+                if (!shouldSend) continue;
+
+                RegionTPSPayload payload = new RegionTPSPayload(id, region.getRegionTickDuration(), currentTPS);
+                for (ServerPlayerEntity player : world.getPlayers()) {
+                    ServerPlayNetworking.send(player, payload);
                 }
+
+                LAST_SENT_REGION_TPS.put(id, currentTPS);
             }
         });
 	}

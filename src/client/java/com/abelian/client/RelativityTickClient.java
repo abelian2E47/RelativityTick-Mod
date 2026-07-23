@@ -1,5 +1,7 @@
 package com.abelian.client;
 
+import com.abelian.client.clientRegionTick.ClientRegionManager;
+import com.abelian.client.clientRegionTick.ClientRegionTicker;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
@@ -32,7 +34,6 @@ public class RelativityTickClient implements ClientModInitializer {
 	public void onInitializeClient() {
 
 		ClientRegionManager.register();
-		RegionTickDeltaManager.register();
 		ClientRegionTicker.register();
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> clearClientState());
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> clearClientState());
@@ -99,7 +100,6 @@ public class RelativityTickClient implements ClientModInitializer {
 		currentState = SelectionState.OFF;
 		ClientRegionManager.clear();
 		ClientRegionTicker.clear();
-		RegionTickDeltaManager.clear();
 	}
 
 

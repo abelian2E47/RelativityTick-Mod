@@ -1,4 +1,4 @@
-package com.abelian.client;
+package com.abelian.client.render;
 
 import net.minecraft.entity.Entity;
 import net.minecraft.util.math.Vec3d;

@@ -1,8 +1,8 @@
 package com.abelian.client.mixin;
 
-import com.abelian.client.ClientRegion;
-import com.abelian.client.ClientRegionManager;
-import com.abelian.client.RegionTickDeltaManager;
+import com.abelian.client.clientRegionTick.ClientRegion;
+import com.abelian.client.clientRegionTick.ClientRegionManager;
+import com.abelian.client.render.RegionTickDeltaManager;
 import net.minecraft.block.entity.PistonBlockEntity;
 import net.minecraft.client.world.ClientWorld;
 import net.minecraft.util.math.ChunkPos;

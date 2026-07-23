@@ -1,10 +1,8 @@
-package com.abelian.client;
+package com.abelian.client.render;
 
 public class InterpolationState {
     public long lastPacketTime;
     public long lastTickTime;
-    public float packetInterval;
-    public double tps;
     public float phase;
     public float tickDelta = 0.0f;
 

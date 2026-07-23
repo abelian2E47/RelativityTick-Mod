@@ -1,7 +1,7 @@
 package com.abelian.client.mixin;
 
-import com.abelian.client.ClientRegionManager;
-import com.abelian.client.ClientTickBridge;
+import com.abelian.client.clientRegionTick.ClientRegionManager;
+import com.abelian.client.clientRegionTick.ClientTickBridge;
 import net.minecraft.client.world.ClientWorld;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.PlayerEntity;

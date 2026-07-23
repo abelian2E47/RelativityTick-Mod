@@ -1,6 +1,7 @@
-package com.abelian.client;
+package com.abelian.client.clientRegionTick;
 
 import com.abelian.network.RegionSyncPayload;
+import com.abelian.network.RegionTPSPayload;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.world.ClientWorld;
@@ -19,15 +20,29 @@ public class ClientRegionManager {
 
     public static void register(){
         ClientPlayNetworking.registerGlobalReceiver(RegionSyncPayload.ID, (payload, context) -> context.client().execute(() -> {
-            removeChunkIndex(payload.id());
+            ClientRegion region = REGIONS.get(payload.id());
             if (payload.chunkPositions().isEmpty()) {
+                removeChunkIndex(payload.id());
                 REGIONS.remove(payload.id());
-
                 ClientRegionTicker.clearRegion(payload.id());
-                RegionTickDeltaManager.clearRegion(payload.id());
+                return;
+            }
+
+            if (region == null) {
+                region = new ClientRegion(payload);
+                REGIONS.put(payload.id(), region);
             } else {
-                REGIONS.put(payload.id(), new ClientRegion(payload));
-                indexChunks(payload.id(), payload.dimension(), payload.chunkPositions());
+                removeChunkIndex(payload.id());
+                region.updateRegionState(payload);
+            }
+
+            indexChunks(payload.id(), payload.dimension(), payload.chunkPositions());
+        }));
+
+        ClientPlayNetworking.registerGlobalReceiver(RegionTPSPayload.ID, (payload, context) -> context.client().execute(() -> {
+            ClientRegion region = REGIONS.get(payload.regionID());
+            if (region != null) {
+                region.updateRegionTPS(payload);
             }
         }));
     }
@@ -45,7 +60,12 @@ public class ClientRegionManager {
         String id = getRegionIDFromChunk(world, chunkPos);
         return id == null ? null : REGIONS.get(id);
     }
-    
+
+    public static boolean isRegionControlled(ClientWorld world, ChunkPos chunkPos) {
+        ClientRegion region = getRegion(world, chunkPos);
+        return region != null && region.isControlled();
+    }
+
     private static void removeChunkIndex(String id) {
         ClientRegion oldRegion = REGIONS.get(id);
         if (oldRegion == null) return;
@@ -81,5 +101,4 @@ public class ClientRegionManager {
         String dimension = world.getRegistryKey().getValue().toString();
         return REGIONS.values().stream().filter(region -> region.getDimension().equals(dimension)).toList();
     }
-
 }

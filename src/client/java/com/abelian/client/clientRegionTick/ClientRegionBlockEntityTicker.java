@@ -1,4 +1,4 @@
-package com.abelian.client;
+package com.abelian.client.clientRegionTick;
 
 import net.minecraft.block.BlockState;
 import net.minecraft.block.entity.BlockEntity;

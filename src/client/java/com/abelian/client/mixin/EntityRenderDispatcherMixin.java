@@ -1,6 +1,9 @@
 package com.abelian.client.mixin;
 
-import com.abelian.client.*;
+import com.abelian.client.clientRegionTick.ClientRegion;
+import com.abelian.client.clientRegionTick.ClientRegionManager;
+import com.abelian.client.render.EntityInterpolationManager;
+import com.abelian.client.render.RegionTickDeltaManager;
 import net.minecraft.client.render.Camera;
 import net.minecraft.client.world.ClientWorld;
 import net.minecraft.client.render.entity.EntityRenderDispatcher;

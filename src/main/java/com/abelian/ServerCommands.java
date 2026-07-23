@@ -311,8 +311,7 @@ public class ServerCommands {
         if (rcc.isInvalid()) return 0;
         if (rcc.manager.isControlled()) release(rcc);
         RegionsManager.removeRegion(rcc.id);
-
-        RegionSyncPayload payload = new RegionSyncPayload(rcc.id, rcc.manager.getDimensionId(), java.util.Collections.emptySet(), false, false, false, 20);
+        RegionSyncPayload payload = new RegionSyncPayload(rcc.id, rcc.manager.getDimensionId(), java.util.Collections.emptySet(), Region.RegionState.RELEASED, 20);
         sendToWorldPlayers(rcc.world, payload);
 
         rcc.source.sendFeedback(() -> Text.translatable("relativitytick.command.region.removed", Text.literal(rcc.id).formatted(Formatting.GOLD)), false);
@@ -396,8 +395,7 @@ public class ServerCommands {
 
     private static void syncRegionState(RegionCommandContext rcc) {
         RegionSyncPayload payload = new RegionSyncPayload(rcc.id, rcc.manager.getDimensionId(), rcc.manager.getChunkPositions(),
-                rcc.manager.isControlled(), rcc.manager.isRunning(), rcc.manager.getPendingSteps() > 0,
-                rcc.manager.getRate());
+                rcc.manager.getState(), rcc.manager.getRate());
         sendToWorldPlayers(rcc.world, payload);
     }
 
