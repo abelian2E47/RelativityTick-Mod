@@ -83,9 +83,6 @@ public class ServerCommands {
                 .requires(source -> source.hasPermissionLevel(2))
                 .then(CommandManager.literal("remove")
                         .then(regionId().executes(ctx -> executeRemove(RegionCommandContext.of(ctx)))))
-                .then(CommandManager.literal("status")
-                        .executes(ctx -> getAllRegionStatus(ctx.getSource()))
-                        .then(regionId().executes(ctx -> getRegionStatus(RegionCommandContext.of(ctx)))))
                 .then(CommandManager.literal("parameter")
                         .then(CommandManager.literal("priority")
                                 .then(regionId()
@@ -127,7 +124,11 @@ public class ServerCommands {
                         .then(regionId()
                                 .executes(ctx -> setRate(RegionCommandContext.of(ctx), 20))
                                 .then(CommandManager.argument("rate", DoubleArgumentType.doubleArg(0.1, 10000))
-                                        .executes(ctx -> setRate(RegionCommandContext.of(ctx), DoubleArgumentType.getDouble(ctx, "rate")))))));
+                                        .executes(ctx -> setRate(RegionCommandContext.of(ctx), DoubleArgumentType.getDouble(ctx, "rate"))))))
+                .then(CommandManager.literal("status")
+                        .executes(ctx -> getAllRegionStatus(ctx.getSource()))
+                        .then(regionId().executes(ctx -> getRegionStatus(RegionCommandContext.of(ctx)))))
+        );
 
     }
 
@@ -398,7 +399,7 @@ public class ServerCommands {
     }
 
     private static void syncRegionTPS(RegionCommandContext rcc) {
-        RegionTPSPayload payload = new RegionTPSPayload(rcc.id, rcc.manager.getRegionTickDuration(), rcc.manager.getTPS());
+        RegionTPSPayload payload = new RegionTPSPayload(rcc.id, rcc.manager.getRegionTickDuration(), rcc.manager.getRate());
         sendToWorldPlayers(rcc.world, payload);
     }
 

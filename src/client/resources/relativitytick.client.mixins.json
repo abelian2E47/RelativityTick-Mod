@@ -6,9 +6,7 @@
     "ClientEntityManagerAccessor",
     "ClientWorldAccessor",
     "ClientWorldMixin",
-    "ClientWorldChunkMixin",
     "EntityRenderDispatcherMixin",
-    "PistonBlockEntityMixin",
     "WorldRendererMixin"
   ],
   "injectors": {

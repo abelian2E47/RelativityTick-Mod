@@ -124,61 +124,6 @@ public class ChunkTickManager {
         this.blockEntityTickBuffer.clear();
     }
 
-    public List<EntityStateRecord> collectEntityStates(ServerWorld world) {
-        List<EntityStateRecord> states = new ArrayList<>();
-        entityTickBuffer.clear();
-        collectTickableEntities(world, entityTickBuffer);
-
-        for (Entity entity : entityTickBuffer) {
-            if (!entity.isRemoved()) {
-                states.add(new EntityStateRecord(
-                        entity.getId(),
-                        entity.getX(), entity.getY(), entity.getZ(),
-                        entity.getYaw(), entity.getPitch(),
-                        entity.getVelocity().x, entity.getVelocity().y, entity.getVelocity().z
-                ));
-            }
-        }
-
-        return states;
-    }
-
-    public void collectTickableEntities(ServerWorld world, Collection<Entity> entities) {
-        collectTickableEntities(world, entities, null);
-    }
-
-
-    public void tickEntities(ServerWorld world) {
-        entityTickBuffer.clear();
-        collectTickableEntities(world, entityTickBuffer);
-
-        for (Entity entity : entityTickBuffer) {
-            if (!entity.isRemoved()) {
-                tickEntity(world, entity);
-            }
-        }
-    }
-
-    private static void tickEntity(ServerWorld world, Entity entity) {
-        if (entity.isRemoved()) return;
-
-        Entity vehicle = entity.getVehicle();
-        if (vehicle != null) {
-            if (!vehicle.isRemoved() && vehicle.hasPassenger(entity)) return;
-            entity.stopRiding();
-        }
-
-        entity.checkDespawn();
-        if (entity.isRemoved()) return;
-
-        ServerTickBridge.setCustomTickInProgress(true);
-        try {
-            ((ServerWorldAccessor) world).invokeTickEntity(entity);
-        } finally {
-            ServerTickBridge.setCustomTickInProgress(false);
-        }
-    }
-
     @SuppressWarnings("unchecked")
     void collectTickableEntities(ServerWorld world, Collection<Entity> entities, Region owner) {
         ServerEntityManager<Entity> entityManager = ((ServerWorldEntityAccessor) world).getEntityManager();
