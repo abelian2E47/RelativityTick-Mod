@@ -24,9 +24,7 @@ public abstract class ServerWorldMixin {
         Region region = RegionsManager.getRegionByChunk((ServerWorld) entity.getWorld(), chunkPosLong);
 
         if (region != null && region.isControlled()) {
-            if (!region.isRunning()) {
-                ci.cancel();
-            }
+            ci.cancel();
         }
     }
 }

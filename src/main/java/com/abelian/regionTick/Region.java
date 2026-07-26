@@ -1,8 +1,11 @@
 package com.abelian.regionTick;
 
 import com.abelian.RegionTickContext;
+import com.abelian.ServerTickBridge;
+import com.abelian.mixin.ServerWorldAccessor;
 import com.abelian.network.EntityStateRecord;
 import net.minecraft.block.Block;
+import net.minecraft.entity.Entity;
 import net.minecraft.fluid.Fluid;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.BlockPos;
@@ -12,9 +15,11 @@ import net.minecraft.world.tick.WorldTickScheduler;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.BiConsumer;
+
 
 public class Region {
     public enum RegionState {
@@ -148,10 +153,18 @@ public class Region {
         RegionTickContext.begin(world, virtualTime);
         try {
             tickScheduledTicks(blockScheduler, blockTicker, fluidScheduler, fluidTicker, virtualTime);
-            processSyncedBlockEvents(world);
+            RegionBlockEventProcessor.process(world, this);
+
+            Set<Entity> entities = new java.util.LinkedHashSet<>();
             for (ChunkTickManager chunk : region) {
-                chunk.tickEntities(world);
+                chunk.collectTickableEntities(world, entities, this);
             }
+            for (Entity entity : entities) {
+                if (!entity.isRemoved()) {
+                    tickEntity(world, entity);
+                }
+            }
+
             for (ChunkTickManager chunk : region) {
                 chunk.tickBlockEntities(world);
             }
@@ -160,11 +173,39 @@ public class Region {
         }
     }
 
+    private static void tickEntity(ServerWorld world, Entity entity) {
+        Entity vehicle = entity.getVehicle();
+        if (vehicle != null) {
+            if (!vehicle.isRemoved() && vehicle.hasPassenger(entity)) return;
+            entity.stopRiding();
+        }
+
+        entity.checkDespawn();
+        if (entity.isRemoved()) return;
+
+        ServerTickBridge.setCustomTickInProgress(true);
+        try {
+            ((ServerWorldAccessor) world).invokeTickEntity(entity);
+        } finally {
+            ServerTickBridge.setCustomTickInProgress(false);
+        }
+    }
+
     public List<EntityStateRecord> collectEntityStates(ServerWorld world) {
         List<EntityStateRecord> entityStates = new ArrayList<>();
         if (isControlled()) {
+            Set<Entity> entities = new java.util.LinkedHashSet<>();
             for (ChunkTickManager chunk : region) {
-                entityStates.addAll(chunk.collectEntityStates(world));
+                chunk.collectTickableEntities(world, entities, this);
+            }
+            for (Entity entity : entities) {
+                if (!entity.isRemoved()) {
+                    entityStates.add(new EntityStateRecord(
+                            entity.getId(), entity.getX(), entity.getY(), entity.getZ(),
+                            entity.getYaw(), entity.getPitch(),
+                            entity.getVelocity().x, entity.getVelocity().y, entity.getVelocity().z
+                    ));
+                }
             }
         }
         return entityStates;

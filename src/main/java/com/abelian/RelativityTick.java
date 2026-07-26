@@ -3,6 +3,7 @@ package com.abelian;
 import com.abelian.config.RelativityTickConfig;
 import com.abelian.network.*;
 import com.abelian.regionTick.Region;
+import com.abelian.regionTick.RegionBlockEventProcessor;
 import com.abelian.regionTick.RegionPersistentState;
 import com.abelian.regionTick.RegionsManager;
 import net.fabricmc.api.ModInitializer;
@@ -66,6 +67,7 @@ public class RelativityTick implements ModInitializer {
             RelativityTickUtils.clear();
             LAST_SENT_REGION_TPS.clear();
             REGION_TPS_SEND_CANDIDATE_TICKS.clear();
+            RegionBlockEventProcessor.clear();
         });
 
         ServerChunkEvents.CHUNK_LOAD.register((world, chunk) ->
@@ -75,15 +77,19 @@ public class RelativityTick implements ModInitializer {
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
                 RegionsManager.syncAllRegions(handler.player));
 
-		ServerPlayNetworking.registerGlobalReceiver(SelectionOperationPayload.ID,
-				(payload, context) -> context.server().execute(() -> {
-                    Set<Long> chunkPositions = payload.chunkPositions();
-                    String id = payload.id();
-                    RegionsManager.createRegion(id, chunkPositions, context.player().getServerWorld());
-				}));
+        ServerPlayNetworking.registerGlobalReceiver(SelectionOperationPayload.ID,
+                (payload, context) -> {
+                    if (!context.player().hasPermissionLevel(2)) return;
+                    context.server().execute(() -> {
+                        Set<Long> chunkPositions = payload.chunkPositions();
+                        String id = payload.id();
+                        RegionsManager.createRegion(id, chunkPositions, context.player().getServerWorld());
+                    });
+                });
 
+        ServerTickEvents.END_SERVER_TICK.register(server -> ServerTickBridge.beginRegionTickBatch());
         //step
-        ServerTickEvents.START_SERVER_TICK.register(server -> {
+        ServerTickEvents.END_SERVER_TICK.register(server -> {
             for (String id : RegionsManager.getRegionIdsByPriority()) {
                 Region region = RegionsManager.getRegion(id);
                 ServerWorld world = server.getWorld(region.getDimension());
@@ -117,7 +123,7 @@ public class RelativityTick implements ModInitializer {
         });
 
         //按rate运行
-        ServerTickEvents.START_SERVER_TICK.register(server -> {
+        ServerTickEvents.END_SERVER_TICK.register(server -> {
             for (String id : RegionsManager.getRegionIdsByPriority()) {
                 Region region = RegionsManager.getRegion(id);
                 if (!region.isRunning() || !region.isControlled()) continue;
@@ -135,7 +141,7 @@ public class RelativityTick implements ModInitializer {
             }
         });
 
-        ServerTickEvents.START_SERVER_TICK.register(server -> {
+        ServerTickEvents.END_SERVER_TICK.register(server -> {
             for (String id : RegionsManager.getRegionIdsByPriority()) {
                 Region region = RegionsManager.getRegion(id);
                 ServerWorld world = server.getWorld(region.getDimension());

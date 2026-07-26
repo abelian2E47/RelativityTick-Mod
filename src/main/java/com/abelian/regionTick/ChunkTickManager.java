@@ -127,7 +127,7 @@ public class ChunkTickManager {
     public List<EntityStateRecord> collectEntityStates(ServerWorld world) {
         List<EntityStateRecord> states = new ArrayList<>();
         entityTickBuffer.clear();
-        collectTickableEntities(world);
+        collectTickableEntities(world, entityTickBuffer);
 
         for (Entity entity : entityTickBuffer) {
             if (!entity.isRemoved()) {
@@ -143,40 +143,55 @@ public class ChunkTickManager {
         return states;
     }
 
+    public void collectTickableEntities(ServerWorld world, Collection<Entity> entities) {
+        collectTickableEntities(world, entities, null);
+    }
+
 
     public void tickEntities(ServerWorld world) {
         entityTickBuffer.clear();
-        collectTickableEntities(world);
+        collectTickableEntities(world, entityTickBuffer);
 
         for (Entity entity : entityTickBuffer) {
             if (!entity.isRemoved()) {
-                ServerTickBridge.setCustomTickInProgress(true);
-                try {
-                    ((ServerWorldAccessor) world).invokeTickEntity(entity);
-                } finally {
-                    ServerTickBridge.setCustomTickInProgress(false);
-                }
+                tickEntity(world, entity);
             }
         }
     }
 
+    private static void tickEntity(ServerWorld world, Entity entity) {
+        if (entity.isRemoved()) return;
+
+        Entity vehicle = entity.getVehicle();
+        if (vehicle != null) {
+            if (!vehicle.isRemoved() && vehicle.hasPassenger(entity)) return;
+            entity.stopRiding();
+        }
+
+        entity.checkDespawn();
+        if (entity.isRemoved()) return;
+
+        ServerTickBridge.setCustomTickInProgress(true);
+        try {
+            ((ServerWorldAccessor) world).invokeTickEntity(entity);
+        } finally {
+            ServerTickBridge.setCustomTickInProgress(false);
+        }
+    }
+
     @SuppressWarnings("unchecked")
-    private void collectTickableEntities(ServerWorld world) {
+    void collectTickableEntities(ServerWorld world, Collection<Entity> entities, Region owner) {
         ServerEntityManager<Entity> entityManager = ((ServerWorldEntityAccessor) world).getEntityManager();
         SectionedEntityCache<Entity> cache = ((ServerEntityManagerAccessor<Entity>) entityManager).getCache();
 
-        var trackingSections = cache.getTrackingSections(this.chunkPosLong);
-        if (trackingSections == null) return;
-
-        trackingSections.forEach(section -> {
-            if (section.getStatus().shouldTrack()) {
-                section.stream().forEach(entity -> {
-                    //防止乘客tick两次
-                    if (!(entity instanceof PlayerEntity) && !entity.isRemoved() && !isPassenger(entity)) {
-                        entityTickBuffer.add(entity);
-                    }
-                });
-            }
+        cache.getTrackingSections(this.chunkPosLong).forEach(section -> {
+            if (!section.getStatus().shouldTick()) return;
+            section.stream().forEach(entity -> {
+                if (entity instanceof PlayerEntity || entity.isRemoved() || isPassenger(entity)) return;
+                if (!world.shouldTickEntity(entity.getBlockPos())) return;
+                if (owner != null && !ServerTickBridge.claimEntity(entity, owner)) return;
+                entities.add(entity);
+            });
         });
     }
 
@@ -184,5 +199,7 @@ public class ChunkTickManager {
         Entity vehicle = entity.getVehicle();
         return vehicle != null && !vehicle.isRemoved() && vehicle.hasPassenger(entity);
     }
-} 
+
+}
+
 

@@ -255,6 +255,7 @@ public class ServerCommands {
         BiConsumer<BlockPos, Fluid> fluidTicker = (pos, fluid) -> rcc.world.getFluidState(pos).onScheduledTick(rcc.world, pos, fluid.getDefaultState().getBlockState());
 
         Map<Integer, EntityStateRecord> entityStates = new LinkedHashMap<>();
+        com.abelian.ServerTickBridge.beginRegionTickBatch();
         for (int i = 0; i < steps; i++) {
             rcc.manager.tickRegion(rcc.world, rcc.world.getBlockTickScheduler(), blockTicker, rcc.world.getFluidTickScheduler(), fluidTicker);
         }
