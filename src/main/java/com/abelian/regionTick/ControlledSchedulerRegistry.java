@@ -8,9 +8,6 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class ControlledSchedulerRegistry {
     private static final Map<ChunkTickScheduler<?>, Region> SCHEDULER_TO_REGION = new ConcurrentHashMap<>();
 
-    private ControlledSchedulerRegistry() {
-    }
-
     public static void register(ChunkTickScheduler<?> scheduler, Region region) {
         SCHEDULER_TO_REGION.put(scheduler, region);
     }

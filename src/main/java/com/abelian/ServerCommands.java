@@ -206,6 +206,7 @@ public class ServerCommands {
                 rcc.manager.setPendingSteps(0);
             }
             rcc.manager.setState(RegionState.RUNNING);
+            rcc.manager.setAccumulator(1.0);
             if (canceledSteps > 0) {
                 sendFeedback(rcc.source, rcc.id, "relativitytick.command.region.unfrozen_canceled", formatConfigValue(rcc.manager.getRate()), canceledSteps);
             } else {
@@ -318,6 +319,9 @@ public class ServerCommands {
         rcc.manager.setRate(rate);
         rcc.manager.setState(wasRunning ? RegionState.RUNNING : RegionState.FROZEN);
         RegionsManager.savePersistentState();
+        //重置TPS统计缓存
+        rcc.manager.resetRecentStepCount(rate);
+
         sendFeedback(rcc.source, rcc.id, wasControlled ? "relativitytick.command.region.rate_set" : "relativitytick.command.region.taken_over_rate_set", formatConfigValue(rate));
         syncRegionState(rcc);
         syncRegionTPS(rcc);
@@ -435,7 +439,7 @@ public class ServerCommands {
     }
 
     private static void syncRegionTPS(RegionCommandContext rcc) {
-        RegionTPSPayload payload = new RegionTPSPayload(rcc.id, rcc.manager.getRegionTickDuration(), rcc.manager.getRate());
+        RegionTPSPayload payload = new RegionTPSPayload(rcc.id, rcc.manager.getRegionTickDuration(), rcc.manager.getTPS());
         sendToWorldPlayers(rcc.world, payload);
     }
 

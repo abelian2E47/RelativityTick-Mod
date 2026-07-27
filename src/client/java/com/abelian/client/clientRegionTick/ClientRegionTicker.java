@@ -57,11 +57,10 @@ public class ClientRegionTicker {
             applyEntityStates(world, payload.entities());
         }));
 
+        //乘客状态同步
         ClientPlayNetworking.registerGlobalReceiver(PassengerSyncPayload.ID, (payload, context) -> context.client().execute(() -> {
             ClientWorld world = context.client().world;
-            System.out.println("flag0");
             if (world == null) return;
-            System.out.println("flag1");
 
             applyPassengerStates(world, payload);
         }));
@@ -106,16 +105,12 @@ public class ClientRegionTicker {
 
     private static void applyPassengerStates(ClientWorld world, PassengerSyncPayload payload) {
         Entity passenger = world.getEntityById(payload.passengerId());
-        System.out.println("flag2");
         if (payload.vehicleID() != -1 && passenger != null){
-            System.out.println("flag3");
             Entity vehicle = world.getEntityById(payload.vehicleID());
             if (vehicle != null) {
-                System.out.println("flag4");
                 passenger.startRiding(vehicle, true);
             }
         }else if (payload.vehicleID() == -1 && passenger != null){
-            System.out.println("flag5");
             passenger.stopRiding();
         }
 

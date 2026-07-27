@@ -5,9 +5,6 @@ import net.minecraft.world.World;
 public final class RegionTickContext {
     private static final ThreadLocal<State> CURRENT = new ThreadLocal<>();
 
-    private RegionTickContext() {
-    }
-
     public static void begin(World world, long tickTime) {
         CURRENT.set(new State(world, tickTime));
     }

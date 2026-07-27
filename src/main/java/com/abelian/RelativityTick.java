@@ -4,7 +4,6 @@ import com.abelian.config.RelativityTickConfig;
 import com.abelian.network.*;
 import com.abelian.regionTick.Region;
 import com.abelian.regionTick.RegionBlockEventProcessor;
-import com.abelian.regionTick.RegionPersistentState;
 import com.abelian.regionTick.RegionsManager;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;

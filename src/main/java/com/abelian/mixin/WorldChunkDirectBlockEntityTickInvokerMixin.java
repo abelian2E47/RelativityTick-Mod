@@ -13,7 +13,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(targets = "net/minecraft/world/chunk/WorldChunk$DirectBlockEntityTickInvoker")
-public abstract class WorldChunkDirectBlockEntityTickInvokerMixin {
+public abstract class   WorldChunkDirectBlockEntityTickInvokerMixin {
     @Shadow
     @Final
     private BlockEntity blockEntity;

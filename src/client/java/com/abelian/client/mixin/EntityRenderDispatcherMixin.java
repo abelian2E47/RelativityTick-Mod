@@ -52,6 +52,7 @@ public class EntityRenderDispatcherMixin {
         }
     }
 
+    //乘客特殊处理
     @Unique
     private static Vec3d getPassengerRenderPos(Entity passenger, Entity vehicle, String regionID, float tickDelta) {
         Vec3d vehicleRenderPos = EntityInterpolationManager.getInterpolatedEntityPos(vehicle, regionID, tickDelta);

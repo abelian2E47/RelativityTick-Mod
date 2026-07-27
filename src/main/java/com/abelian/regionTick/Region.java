@@ -144,6 +144,12 @@ public class Region {
         this.currentWorldTime = time;
     }
 
+    public void restoreTimeline(long freezeStartTime, int stepped, long currentWorldTime) {
+        this.freezeStartTime = freezeStartTime;
+        this.stepped = stepped;
+        this.currentWorldTime = currentWorldTime;
+    }
+
     public void setCurrentWorldTime(long time) {
         this.currentWorldTime = time;
     }
@@ -346,6 +352,23 @@ public class Region {
 
     public boolean hasFullTpsSampleWindow() {
         return this.recentStepSamples >= TPS_AVERAGE_WINDOW_GT;
+    }
+
+    public void resetRecentStepCount(double targetTPS){
+        int syntheticTotal = (int) Math.round(targetTPS * TPS_AVERAGE_WINDOW_GT / 20.0);
+        int baseSteps = syntheticTotal / TPS_AVERAGE_WINDOW_GT;
+        int extraSteps = syntheticTotal % TPS_AVERAGE_WINDOW_GT;
+
+        this.recentStepTotal = 0;
+        for (int i = 0; i < TPS_AVERAGE_WINDOW_GT; i++) {
+            int steps = baseSteps + (i < extraSteps ? 1 : 0);
+            this.recentStepCounts[i] = steps;
+            this.recentStepTotal += steps;
+        }
+
+        this.recentStepCursor = 0;
+        this.recentStepSamples = TPS_AVERAGE_WINDOW_GT;
+        this.regionTPS = targetTPS;
     }
 
     public double getTPS() { return regionTPS; }

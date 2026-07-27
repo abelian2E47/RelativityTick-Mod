@@ -1,5 +1,6 @@
-package com.abelian.regionTick;
+package com.abelian;
 
+import com.abelian.regionTick.Region;
 import net.minecraft.datafixer.DataFixTypes;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtElement;
@@ -101,7 +102,10 @@ public class RegionPersistentState extends PersistentState {
                     : regionNbt.contains("tickDurationLimit ") ? regionNbt.getDouble("tickDurationLimit ") : 10.0;
             int priority = regionNbt.contains("regionPriority") ? regionNbt.getInt("regionPriority") : 1;
             Region.RegionState regionState = readRegionState(regionNbt);
-            state.regions.put(id, new RegionData(dimension, chunks, rate, maxRegionCostMs, priority, regionState));
+            boolean hasTimeline = regionNbt.contains("freezeStartTime") && regionNbt.contains("stepped");
+            long freezeStartTime = hasTimeline ? regionNbt.getLong("freezeStartTime") : 0L;
+            int stepped = hasTimeline ? regionNbt.getInt("stepped") : 0;
+            state.regions.put(id, new RegionData(dimension, chunks, rate, maxRegionCostMs, priority, regionState, freezeStartTime, stepped, hasTimeline));
         }
         return state;
     }
@@ -129,6 +133,8 @@ public class RegionPersistentState extends PersistentState {
             regionNbt.putDouble("tickDurationLimit ", region.tickDurationLimit());
             regionNbt.putInt("regionPriority", region.regionPriority());
             regionNbt.putString("state", region.state().name());
+            regionNbt.putLong("freezeStartTime", region.freezeStartTime());
+            regionNbt.putInt("stepped", region.stepped());
             regionList.add(regionNbt);
         }
 
@@ -150,7 +156,7 @@ public class RegionPersistentState extends PersistentState {
         markDirty();
     }
 
-    public record RegionData(RegistryKey<World> dimension, Set<Long> chunks, double rate, double tickDurationLimit , int regionPriority, Region.RegionState state) {
+    public record RegionData(RegistryKey<World> dimension, Set<Long> chunks, double rate, double tickDurationLimit , int regionPriority, Region.RegionState state, long freezeStartTime, int stepped, boolean hasTimeline) {
         public RegionData {
             chunks = Set.copyOf(chunks);
         }

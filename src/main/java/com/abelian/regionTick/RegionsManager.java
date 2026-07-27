@@ -1,5 +1,6 @@
 package com.abelian.regionTick;
 
+import com.abelian.RegionPersistentState;
 import com.abelian.network.RegionSyncPayload;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.registry.RegistryKey;
@@ -166,9 +167,8 @@ public class RegionsManager {
 
             ServerWorld world = getServer().getWorld(region.getDimension());
             if (world == null) continue;
-            region.setFreezeStartTime(world.getTime());
-            region.takeOverRegion(world.getBlockTickScheduler(), world.getTime());
-            region.takeOverRegion(world.getFluidTickScheduler(), world.getTime());
+            region.takeOverRegion(world.getBlockTickScheduler(), region.getCurrentWorldTime());
+            region.takeOverRegion(world.getFluidTickScheduler(), region.getCurrentWorldTime());
         }
     }
 
@@ -251,6 +251,13 @@ public class RegionsManager {
             region.setMaxRegionCostMs(data.tickDurationLimit());
             int priority = data.regionPriority();
             region.setRegionPriority(isPriorityAvailable(priority, id) ? priority : nextAvailablePriority());
+            if (data.hasTimeline()) {
+                region.restoreTimeline(data.freezeStartTime(), data.stepped(), data.freezeStartTime() + data.stepped());
+            } else {
+                ServerWorld world = getServer().getWorld(data.dimension());
+                long currentTime = world != null ? world.getTime() : 0L;
+                region.restoreTimeline(currentTime, 0, currentTime);
+            }
             region.setState(data.state());
             ID_TO_REGION.put(id, region);
 
@@ -275,7 +282,10 @@ public class RegionsManager {
                     region.getRate(),
                     region.getTickDurationLimit(),
                     region.getRegionPriority(),
-                    region.getState()
+                    region.getState(),
+                    region.getFreezeStartTime(),
+                    region.getStepped(),
+                    true
             ));
         }
         state.replaceRegions(regions);
