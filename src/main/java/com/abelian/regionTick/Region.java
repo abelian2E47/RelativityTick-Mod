@@ -1,16 +1,24 @@
 package com.abelian.regionTick;
 
+import com.abelian.config.RelativityTickConfig;
 import com.abelian.RegionTickContext;
 import com.abelian.ServerTickBridge;
+import com.abelian.mixin.ServerChunkManagerAccessor;
+import com.abelian.mixin.ServerChunkLoadingManagerAccessor;
 import com.abelian.mixin.ServerWorldAccessor;
 import com.abelian.network.EntityStateRecord;
 import net.minecraft.block.Block;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.SpawnGroup;
 import net.minecraft.fluid.Fluid;
+import net.minecraft.server.world.ServerChunkManager;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.registry.RegistryKey;
+import net.minecraft.world.SpawnHelper;
+import net.minecraft.world.SpawnDensityCapper;
 import net.minecraft.world.World;
+import net.minecraft.world.chunk.WorldChunk;
 import net.minecraft.world.tick.WorldTickScheduler;
 
 import java.util.ArrayList;
@@ -153,6 +161,7 @@ public class Region {
         RegionTickContext.begin(world, virtualTime);
         try {
             tickScheduledTicks(blockScheduler, blockTicker, fluidScheduler, fluidTicker, virtualTime);
+            tickChunkWorld(world);
             RegionBlockEventProcessor.process(world, this);
 
             Set<Entity> entities = new java.util.LinkedHashSet<>();
@@ -219,10 +228,37 @@ public class Region {
         }
     }
 
-    private void processSyncedBlockEvents(ServerWorld world) {
-        RegionBlockEventProcessor.process(world, owner -> owner == this);
-    }
+    private void tickChunkWorld(ServerWorld world) {
+        if (!RelativityTickConfig.isChunkTickEnabled()) return;
 
+        ServerChunkManagerAccessor managerAccessor = (ServerChunkManagerAccessor) world.getChunkManager();
+        ServerChunkLoadingManagerAccessor loadingAccessor =
+                (ServerChunkLoadingManagerAccessor) managerAccessor.getChunkLoadingManager();
+
+        SpawnHelper.Info spawnInfo = ServerTickBridge.getSpawnInfo(world);
+        boolean doMobSpawning = world.getGameRules().getBoolean(net.minecraft.world.GameRules.DO_MOB_SPAWNING);
+        int randomTickSpeed = world.getGameRules().getInt(net.minecraft.world.GameRules.RANDOM_TICK_SPEED);
+        List<SpawnGroup> spawnGroups = doMobSpawning
+                ? SpawnHelper.collectSpawnableGroups(
+                        spawnInfo,
+                        managerAccessor.getSpawnAnimals(),
+                        managerAccessor.getSpawnMonsters(),
+                        world.getTime() % 400L == 0L
+                )
+                : List.of();
+
+        loadingAccessor.invokeForEachTickedChunk(holder -> {
+            WorldChunk chunk = holder.getWorldChunk();
+            if (chunk == null || !chunkPositions.contains(chunk.getPos().toLong())) return;
+            chunk.increaseInhabitedTime(1L);
+            if (!spawnGroups.isEmpty() && world.getWorldBorder().contains(chunk.getPos())) {
+                SpawnHelper.spawn(world, chunk, spawnInfo, spawnGroups);
+            }
+            if (world.shouldTickBlocksInChunk(chunk.getPos().toLong())) {
+                world.tickChunk(chunk, randomTickSpeed);
+            }
+        });
+    }
 
     public void setPendingSteps(int steps){
         this.pendingSteps = steps;

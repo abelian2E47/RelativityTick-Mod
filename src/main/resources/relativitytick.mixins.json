@@ -4,15 +4,18 @@
   "compatibilityLevel": "JAVA_21",
   "mixins": [
     "ChunkTickSchedulerMixin",
+    "EntityMixin",
+    "ServerChunkLoadingManagerAccessor",
+    "ServerChunkManagerAccessor",
     "ServerEntityManagerAccessor",
     "ServerWorldAccessor",
+    "ServerWorldBlockEventMixin",
     "ServerWorldEntityAccessor",
     "ServerWorldMixin",
-    "ServerWorldBlockEventMixin",
+    "SpawnHelperMixin",
     "TickMangerMixin",
-    "WorldChunkMixin",
-    "WorldMixin",
     "WorldChunkDirectBlockEntityTickInvokerMixin",
+    "WorldMixin",
     "WorldTickSchedulerAccessor"
   ],
   "injectors": {

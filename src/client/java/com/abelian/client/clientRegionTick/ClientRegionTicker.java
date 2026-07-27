@@ -5,6 +5,7 @@ import com.abelian.client.render.EntityInterpolationManager;
 import com.abelian.client.mixin.ClientEntityManagerAccessor;
 import com.abelian.client.mixin.ClientWorldAccessor;
 import com.abelian.network.EntityStateRecord;
+import com.abelian.network.PassengerSyncPayload;
 import com.abelian.network.RegionEntitySyncPayload;
 import com.abelian.network.RegionStepPayload;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -56,6 +57,15 @@ public class ClientRegionTicker {
             applyEntityStates(world, payload.entities());
         }));
 
+        ClientPlayNetworking.registerGlobalReceiver(PassengerSyncPayload.ID, (payload, context) -> context.client().execute(() -> {
+            ClientWorld world = context.client().world;
+            System.out.println("flag0");
+            if (world == null) return;
+            System.out.println("flag1");
+
+            applyPassengerStates(world, payload);
+        }));
+
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             ClientWorld world = client.world;
             if (world == null) return;
@@ -92,6 +102,25 @@ public class ClientRegionTicker {
             entity.refreshPositionAndAngles(state.x(), state.y(), state.z(), state.yaw(), state.pitch());
             entity.setVelocity(new Vec3d(state.velocityX(), state.velocityY(), state.velocityZ()));
         }
+    }
+
+    private static void applyPassengerStates(ClientWorld world, PassengerSyncPayload payload) {
+        Entity passenger = world.getEntityById(payload.passengerId());
+        System.out.println("flag2");
+        if (payload.vehicleID() != -1 && passenger != null){
+            System.out.println("flag3");
+            Entity vehicle = world.getEntityById(payload.vehicleID());
+            if (vehicle != null) {
+                System.out.println("flag4");
+                passenger.startRiding(vehicle, true);
+            }
+        }else if (payload.vehicleID() == -1 && passenger != null){
+            System.out.println("flag5");
+            passenger.stopRiding();
+        }
+
+
+
     }
 
     private static void tickRegion(ClientWorld world, String regionId, Set<Long> chunkSet, int stepsTaken) {

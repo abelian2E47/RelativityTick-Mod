@@ -6,6 +6,7 @@ import com.abelian.regionTick.Region;
 import com.abelian.regionTick.RegionsManager;
 import com.abelian.regionTick.Region.RegionState;
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.BoolArgumentType;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
@@ -71,13 +72,7 @@ public class ServerCommands {
     }
 
     public static void register(CommandDispatcher<ServerCommandSource> dispatcher, CommandRegistryAccess registryAccess, CommandManager.RegistrationEnvironment environment) {
-        dispatcher.register(CommandManager.literal("relativityTick")
-                .executes(ctx -> showRelativityTickConfig(ctx.getSource()))
-                .then(CommandManager.literal("maxMspt")
-                        .executes(ctx -> showRelativityTickConfig(ctx.getSource()))
-                        .then(CommandManager.argument("value", DoubleArgumentType.doubleArg(1.0, 50.0))
-                                .requires(source -> source.hasPermissionLevel(2))
-                                .executes(ctx -> setMaxMspt(ctx.getSource(), DoubleArgumentType.getDouble(ctx, "value"))))));
+        dispatcher.register(relativityConfigCommand("relativityTick"));
 
         dispatcher.register(CommandManager.literal("regionManager")
                 .requires(source -> source.hasPermissionLevel(2))
@@ -131,16 +126,57 @@ public class ServerCommands {
         );
 
     }
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<ServerCommandSource> relativityConfigCommand(String literal) {
+        return CommandManager.literal(literal)
+                .executes(ctx -> showRelativityTickConfig(ctx.getSource()))
+                .then(CommandManager.literal("maxMspt")
+                        .executes(ctx -> showMaxMsptConfig(ctx.getSource()))
+                        .then(CommandManager.argument("value", DoubleArgumentType.doubleArg(1.0, 50.0))
+                                .requires(source -> source.hasPermissionLevel(2))
+                                .executes(ctx -> setMaxMspt(ctx.getSource(), DoubleArgumentType.getDouble(ctx, "value")))))
+                .then(CommandManager.literal("chunkTick")
+                        .executes(ctx -> showChunkTickConfig(ctx.getSource()))
+                        .then(CommandManager.literal("enabled")
+                                .then(CommandManager.argument("value", BoolArgumentType.bool())
+                                        .requires(source -> source.hasPermissionLevel(2))
+                                        .executes(ctx -> setChunkTickEnabled(
+                                                ctx.getSource(), BoolArgumentType.getBool(ctx, "value"))))));
+    }
 
-    private static int showRelativityTickConfig(ServerCommandSource source) {
-        source.sendFeedback(() -> Text.translatable("relativitytick.command.config.max_mspt", formatConfigValue(RelativityTickConfig.getMaxMspt())), false);
+    private static int showChunkTickConfig(ServerCommandSource source) {
+        source.sendFeedback(() -> Text.translatable("relativitytick.command.config.chunk_tick",
+                RelativityTickConfig.isChunkTickEnabled()), false);
         return 1;
     }
+
+    private static int showMaxMsptConfig(ServerCommandSource source) {
+        source.sendFeedback(() -> Text.translatable("relativitytick.command.config.max_mspt",
+                formatConfigValue(RelativityTickConfig.getMaxMspt())), false);
+        return 1;
+    }
+
+    private static int setChunkTickEnabled(ServerCommandSource source, boolean value) {
+        try {
+            RelativityTickConfig.setChunkTickEnabled(value);
+            return showChunkTickConfig(source);
+        } catch (IOException e) {
+            source.sendError(Text.translatable("relativitytick.command.error.config_save_failed").formatted(Formatting.RED));
+            return 0;
+        }
+    }
+
+    private static int showRelativityTickConfig(ServerCommandSource source) {
+        showMaxMsptConfig(source);
+        showChunkTickConfig(source);
+        return 1;
+    }
+
+
 
     private static int setMaxMspt(ServerCommandSource source, double value) {
         try {
             RelativityTickConfig.setMaxMspt(value);
-            return showRelativityTickConfig(source);
+            return showMaxMsptConfig(source);
         } catch (IOException e) {
             source.sendError(Text.translatable("relativitytick.command.error.config_save_failed").formatted(Formatting.RED));
             return 0;

@@ -13,6 +13,7 @@ import net.minecraft.util.math.ChunkPos;
 import net.minecraft.util.math.Vec3d;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyArgs;
 import org.spongepowered.asm.mixin.injection.invoke.arg.Args;
@@ -26,8 +27,12 @@ public class EntityRenderDispatcherMixin {
     private void adjustPosition(Args args) {
         Entity entity = args.get(0);
         if (entity instanceof PlayerEntity) return;
-        ChunkPos entityChunkPos = entity.getChunkPos();
-        ClientRegion region = entity.getWorld() instanceof ClientWorld world ? ClientRegionManager.getRegion(world, entityChunkPos) : null;
+        Entity vehicle = entity.getVehicle();
+        boolean isPassenger = vehicle != null && !vehicle.isRemoved() && vehicle.hasPassenger(entity);
+        Entity regionAnchor = isPassenger ? vehicle : entity;
+
+        ChunkPos entityChunkPos = regionAnchor.getChunkPos();
+        ClientRegion region = regionAnchor.getWorld() instanceof ClientWorld world ? ClientRegionManager.getRegion(world, entityChunkPos) : null;
         if (region != null && region.isControlled()) {
             String regionID = region.getId();
             float tickDelta = RegionTickDeltaManager.getTickDelta(regionID);
@@ -37,11 +42,22 @@ public class EntityRenderDispatcherMixin {
             }
             args.set(4, tickDelta);
             Vec3d camPos = this.camera.getPos();
-            Vec3d worldRenderPos = EntityInterpolationManager.getInterpolatedEntityPos(entity, regionID, tickDelta);
+            Vec3d worldRenderPos = isPassenger
+                    ? getPassengerRenderPos(entity, vehicle, regionID, tickDelta)
+                    : EntityInterpolationManager.getInterpolatedEntityPos(entity, regionID, tickDelta);
             Vec3d relativePos = worldRenderPos.subtract(camPos);
             args.set(1, relativePos.x);
             args.set(2, relativePos.y);
             args.set(3, relativePos.z);
         }
+    }
+
+    @Unique
+    private static Vec3d getPassengerRenderPos(Entity passenger, Entity vehicle, String regionID, float tickDelta) {
+        Vec3d vehicleRenderPos = EntityInterpolationManager.getInterpolatedEntityPos(vehicle, regionID, tickDelta);
+        Vec3d passengerOffset = vehicle.getPassengerRidingPos(passenger)
+                .subtract(vehicle.getPos())
+                .subtract(passenger.getVehicleAttachmentPos(vehicle));
+        return vehicleRenderPos.add(passengerOffset);
     }
 }

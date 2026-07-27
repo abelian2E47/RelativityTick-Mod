@@ -1,5 +1,6 @@
 {
   "relativitytick.command.config.max_mspt": "maxMspt：%s",
+  "relativitytick.command.config.chunk_tick": "chunkTick.enabled：%s",
   "relativitytick.command.error.not_in_region": "错误：你当前不在任何区域内；请明确指定区域 ID",
   "relativitytick.command.error.region_not_found": "错误：找不到区域 '%s'",
   "relativitytick.command.error.config_save_failed": "错误：保存 RelativityTick 配置失败",

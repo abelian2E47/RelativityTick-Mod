@@ -37,6 +37,7 @@ public class RelativityTick implements ModInitializer {
 	public static final Identifier REGION_TPS_SYNC_PACKET_ID = Identifier.of(MOD_ID, "region_tps_sync_packet");
 	public static final Identifier REGION_STEP_PACKET_ID = Identifier.of(MOD_ID, "region_step_packet");
 	public static final Identifier REGION_ENTITY_SYNC_PACKET_ID = Identifier.of(MOD_ID, "region_entity_sync_packet");
+    public static final Identifier PASSENGER_SYNC_PACKET_ID = Identifier.of(MOD_ID, "passenger_sync_packet");
 
     private static final double REGION_TPS_RELATIVE_SEND_THRESHOLD = 0.01;
     private static final int REGION_TPS_STABLE_SEND_GT = 20;
@@ -52,6 +53,7 @@ public class RelativityTick implements ModInitializer {
 		PayloadTypeRegistry.playS2C().register(RegionTPSPayload.ID, RegionTPSPayload.CODEC);
 		PayloadTypeRegistry.playS2C().register(RegionStepPayload.ID, RegionStepPayload.CODEC);
 		PayloadTypeRegistry.playS2C().register(RegionEntitySyncPayload.ID, RegionEntitySyncPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(PassengerSyncPayload.ID, PassengerSyncPayload.CODEC);
 
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
             RelativityTickUtils.set(server);
