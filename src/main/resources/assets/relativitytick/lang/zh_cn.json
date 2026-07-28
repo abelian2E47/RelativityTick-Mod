@@ -22,6 +22,7 @@
   "relativitytick.command.region.removed": "已移除区域 %s",
   "relativitytick.command.status.no_regions": "没有区域",
   "relativitytick.command.status.header": "--- 区域状态：%s ---",
+  "relativitytick.command.status.region_time": "区域时间：%s",
   "relativitytick.command.status.state": "状态：%s",
   "relativitytick.command.status.chunks": "区块数：%s",
   "relativitytick.command.status.priority": "优先级：%s",

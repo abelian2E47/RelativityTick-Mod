@@ -22,6 +22,7 @@
   "relativitytick.command.region.removed": "remove region %s",
   "relativitytick.command.status.no_regions": "No regions",
   "relativitytick.command.status.header": "--- region status: %s ---",
+  "relativitytick.command.status.region_time": "Region time: %s",
   "relativitytick.command.status.state": "State: %s",
   "relativitytick.command.status.chunks": "Chunks: %s",
   "relativitytick.command.status.priority": "Priority: %s",

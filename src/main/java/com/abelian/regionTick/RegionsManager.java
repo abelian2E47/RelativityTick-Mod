@@ -248,6 +248,7 @@ public class RegionsManager {
             RegionPersistentState.RegionData data = entry.getValue();
             Region region = new Region(id, data.dimension(), data.chunks());
             region.setRate(data.rate());
+            region.setRegionTime(data.regionTime());
             region.setMaxRegionCostMs(data.tickDurationLimit());
             int priority = data.regionPriority();
             region.setRegionPriority(isPriorityAvailable(priority, id) ? priority : nextAvailablePriority());
@@ -283,6 +284,7 @@ public class RegionsManager {
                     region.getTickDurationLimit(),
                     region.getRegionPriority(),
                     region.getState(),
+                    region.getRegionTime(),
                     region.getFreezeStartTime(),
                     region.getStepped(),
                     true

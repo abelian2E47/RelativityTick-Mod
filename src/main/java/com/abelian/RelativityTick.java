@@ -207,6 +207,7 @@ public class RelativityTick implements ModInitializer {
             regionTickDurationNano += System.nanoTime() - tickStartNano;
             stepsTaken++;
             remainingSteps--;
+            region.stepRegionTime();
 
             if (consumePendingSteps && region.getPendingSteps() > 0) {
                 region.setPendingSteps(region.getPendingSteps() - 1);

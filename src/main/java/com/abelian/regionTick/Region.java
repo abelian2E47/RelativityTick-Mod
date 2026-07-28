@@ -45,6 +45,7 @@ public class Region {
     private int stepped = 0;
     private int pendingSteps = 0;
     private double rate = 20;
+    private int regionTime = 0;
     private double accumulator = 0.0;
     private double tickDurationLimit = 10.0;
     private int regionPriority = 1;
@@ -334,9 +335,12 @@ public class Region {
 
     public void  setReachTickDurationLimit(boolean reachTickDurationLimit) { this.reachTickDurationLimit = reachTickDurationLimit; }
 
-    public void recordTickDuration(long totalNanoInTick) {
-        this.regionTickDuration = (float)(totalNanoInTick / 1_000_000.0);
-    }
+    public void recordTickDuration(long totalNanoInTick) {this.regionTickDuration = (float)(totalNanoInTick / 1_000_000.0);}
+
+    public void stepRegionTime(){regionTime++;}
+
+    public int getRegionTime(){return regionTime;}
+    public void setRegionTime(int regionTime) { this.regionTime = regionTime; }
 
     public void recordGlobalTickSteps(int stepsTaken) {
         this.recentStepTotal -= this.recentStepCounts[this.recentStepCursor];

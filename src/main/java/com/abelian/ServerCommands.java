@@ -383,6 +383,8 @@ public class ServerCommands {
 
         source.sendFeedback(() -> Text.translatable("relativitytick.command.status.header",
                 Text.literal(id).formatted(Formatting.AQUA)), false);
+        source.sendFeedback(() -> Text.translatable("relativitytick.command.status.region_time",
+                Text.literal(String.valueOf(mgr.getRegionTime())).formatted(Formatting.AQUA)), false);
         source.sendFeedback(() -> Text.translatable("relativitytick.command.status.state",
                 Text.translatable(stateKey).formatted(stateFormatting(stateKey))), false);
         source.sendFeedback(() -> Text.translatable("relativitytick.command.status.chunks",

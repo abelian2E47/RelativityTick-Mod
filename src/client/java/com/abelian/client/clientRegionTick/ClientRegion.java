@@ -96,10 +96,6 @@ public class ClientRegion {
 
     public String getId(){ return id;}
 
-    public double getRegionTPS() {
-        return regionTPS;
-    }
-
     public Region.RegionState getRegionState() {
         return regionState;
     }
