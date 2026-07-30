@@ -8,6 +8,7 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.client.option.KeyBinding;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
@@ -46,6 +47,7 @@ public class RelativityTickClient implements ClientModInitializer {
 				"category.relativitytick"));
 
 
+
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
 
 			KeyBinding attackKey = client.options.attackKey;
@@ -76,24 +78,37 @@ public class RelativityTickClient implements ClientModInitializer {
 				}
 			}
 
-			//选区键
-			while (startSelectingKeyBinding.wasPressed()) {
-				if (currentState.equals(SelectionState.OFF) || currentState.equals(SelectionState.AWAITING_CONFIRM)) {
-					currentState = SelectionState.SELECTING_CHUNKS;
-					if (client.player != null) {
-						client.player.sendMessage(Text.translatable("relativitytick.selection.mode_activated").formatted(Formatting.GREEN), false);
-					}
-				} else if (currentState.equals(SelectionState.SELECTING_CHUNKS)) {
-					currentState = SelectionState.AWAITING_CONFIRM;
-					if (client.player != null) {
-						client.player.sendMessage(Text.translatable("relativitytick.selection.completed").formatted(Formatting.YELLOW), false);
-					}
-				}
-			}
+            while (startSelectingKeyBinding.wasPressed()) {
+                if (currentState == SelectionState.OFF || currentState == SelectionState.AWAITING_CONFIRM) {
+                    selectChunksMode();
+                } else if (currentState == SelectionState.SELECTING_CHUNKS) {
+                    confirmChunksSelection();
+                }
+            }
+        });
 
-		});
 
 	}
+
+    public static void selectChunksMode() {
+        if (currentState == SelectionState.OFF || currentState == SelectionState.AWAITING_CONFIRM) {
+            currentState = SelectionState.SELECTING_CHUNKS;
+            if (MinecraftClient.getInstance().player != null) {
+                MinecraftClient.getInstance().player.sendMessage(
+                        Text.translatable("relativitytick.selection.mode_activated").formatted(Formatting.GREEN), false);
+            }
+        }
+    }
+
+    public static void confirmChunksSelection() {
+        if (currentState == SelectionState.SELECTING_CHUNKS) {
+            currentState = SelectionState.AWAITING_CONFIRM;
+            if (MinecraftClient.getInstance().player != null) {
+                MinecraftClient.getInstance().player.sendMessage(
+                        Text.translatable("relativitytick.selection.completed").formatted(Formatting.YELLOW), false);
+            }
+        }
+    }
 
 	public static void clearClientState() {
 		selectChunks.clear();

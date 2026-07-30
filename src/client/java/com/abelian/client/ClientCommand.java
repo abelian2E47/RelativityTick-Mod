@@ -23,10 +23,7 @@ public class ClientCommand {
                 .requires(source -> source.hasPermissionLevel(2))
                 .then(CommandManager.literal("create")
                         .then(CommandManager.argument("id", StringArgumentType.string())
-                                .executes(context -> create(
-                                        context.getSource(),
-                                        StringArgumentType.getString(context, "id")
-                                ))
+                                .executes(context -> create(context.getSource(), StringArgumentType.getString(context, "id")))
                         )
                 )
                 .then(CommandManager.literal("chunk")
@@ -36,10 +33,7 @@ public class ClientCommand {
                                             RegionsManager.getRegionIds().forEach(builder::suggest);
                                             return builder.buildFuture();
                                         })
-                                        .executes(context -> addChunk(
-                                                context.getSource(),
-                                                StringArgumentType.getString(context, "id")
-                                        ))
+                                        .executes(context -> addChunk(context.getSource(), StringArgumentType.getString(context, "id")))
                                 )
                         )
                         .then(CommandManager.literal("remove")
@@ -47,6 +41,24 @@ public class ClientCommand {
                         )
                 )
         );
+
+        dispatcher.register(CommandManager.literal("tickManager")
+                .requires(source -> source.hasPermissionLevel(2))
+                .then(CommandManager.literal("chunk")
+                        .then(CommandManager.literal("select").executes(context -> select(context.getSource())))
+                        .then(CommandManager.literal("confirm").executes(context -> confirm(context.getSource())))
+                )
+        );
+    }
+
+    private static int select(ServerCommandSource source) {
+        RelativityTickClient.selectChunksMode();
+        return 1;
+    }
+
+    private static int confirm(ServerCommandSource source) {
+        RelativityTickClient.confirmChunksSelection();
+        return 1;
     }
 
     private static int create(ServerCommandSource source, String id) {
