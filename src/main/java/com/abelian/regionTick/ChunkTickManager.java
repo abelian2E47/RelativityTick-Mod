@@ -1,25 +1,18 @@
 package com.abelian.regionTick;
 
 import com.abelian.mixin.WorldTickSchedulerAccessor;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.entity.BlockEntity;
-import net.minecraft.block.entity.BlockEntityTicker;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.chunk.WorldChunk;
 import net.minecraft.world.tick.ChunkTickScheduler;
 import net.minecraft.world.tick.OrderedTick;
 import net.minecraft.world.tick.WorldTickScheduler;
+import net.minecraft.util.math.BlockPos;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiConsumer;
 
 public class ChunkTickManager {
     private final long chunkPosLong;
-    private final List<Object> blockEntityTickBuffer = new ArrayList<>(64);
 
-    ChunkTickManager(long chunkPosLong){
+    ChunkTickManager(long chunkPosLong) {
         this.chunkPosLong = chunkPosLong;
     }
 
@@ -90,33 +83,6 @@ public class ChunkTickManager {
         }
     }
 
-    @SuppressWarnings("unchecked")
-    public void tickBlockEntities(ServerWorld world) {
-        int chunkX = (int) (this.chunkPosLong & 0xFFFFFFFFL);
-        int chunkZ = (int) (this.chunkPosLong >>> 32);
-        WorldChunk chunk = world.getChunk(chunkX, chunkZ);
-
-        if (chunk == null) return;
-
-
-        this.blockEntityTickBuffer.clear();
-        for (BlockEntity be : chunk.getBlockEntities().values()) {
-            if (!be.isRemoved() && be.hasWorld()) {
-                this.blockEntityTickBuffer.add(be);
-            }
-        }
-
-        for (Object obj : this.blockEntityTickBuffer) {
-            BlockEntity be = (BlockEntity) obj;
-            BlockState state = be.getCachedState();
-            BlockEntityTicker<BlockEntity> ticker = (BlockEntityTicker<BlockEntity>) state.getBlockEntityTicker(world, be.getType());
-            if (ticker != null) {
-                ticker.tick(world, be.getPos(), state, be);
-            }
-        }
-
-        this.blockEntityTickBuffer.clear();
-    }
 }
 
 

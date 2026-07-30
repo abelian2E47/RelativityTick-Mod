@@ -125,21 +125,23 @@ public class ClientRegionTicker {
         for (int i = 0; i < stepsTaken; i++) {
             RegionTickContext.begin(world, nextRegionTickTime++);
 
-            collectTickingEntities(world, chunkSet);
-            for (Entity entity : ENTITY_TICK_BUFFER) {
-                if (entity.isRemoved()) continue;
+            ClientTickBridge.setCustomTickInProgress(true);
+            try {
+                collectTickingEntities(world, chunkSet);
+                for (Entity entity : ENTITY_TICK_BUFFER) {
+                    if (entity.isRemoved()) continue;
 
-                previousPositions.putIfAbsent(entity.getId(), entity.getPos());
-                tickedEntities.put(entity.getId(), entity);
+                    previousPositions.putIfAbsent(entity.getId(), entity.getPos());
+                    tickedEntities.put(entity.getId(), entity);
+                    ((ClientWorldAccessor) world).invokeTickEntity(entity);
+                }
 
-                ClientTickBridge.setCustomTickInProgress(true);
-                ((ClientWorldAccessor) world).invokeTickEntity(entity);
+                ENTITY_TICK_BUFFER.clear();
+                ClientRegionBlockEntityTicker.tickBlockEntities(world, chunkSet);
+            } finally {
                 ClientTickBridge.setCustomTickInProgress(false);
+                RegionTickContext.end();
             }
-            ENTITY_TICK_BUFFER.clear();
-            ClientRegionBlockEntityTicker.tickBlockEntities(world, chunkSet);
-
-            RegionTickContext.end();
         }
 
         for (Map.Entry<Integer, Entity> entry : tickedEntities.entrySet()) {

@@ -3,7 +3,9 @@
   "package": "com.abelian.client.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
+    "BlockEntityRenderDispatcherMixin",
     "ClientEntityManagerAccessor",
+    "ClientWorldChunkDirectBlockEntityTickInvokerMixin",
     "ClientWorldAccessor",
     "ClientWorldMixin",
     "EntityRenderDispatcherMixin",

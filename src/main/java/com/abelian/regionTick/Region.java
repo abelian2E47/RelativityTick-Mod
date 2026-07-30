@@ -4,6 +4,11 @@ import com.abelian.RelativityTickUtils;
 import com.abelian.config.RelativityTickConfig;
 import com.abelian.RegionTickContext;
 import com.abelian.ServerTickBridge;
+import com.abelian.mixin.WorldAccessor;
+import net.minecraft.world.chunk.BlockEntityTickInvoker;
+import java.util.Iterator;
+
+import net.minecraft.util.math.ChunkPos;
 import com.abelian.mixin.ServerChunkManagerAccessor;
 import com.abelian.mixin.ServerChunkLoadingManagerAccessor;
 import com.abelian.mixin.ServerWorldAccessor;
@@ -172,14 +177,39 @@ public class Region {
             tickScheduledTicks(blockScheduler, blockTicker, fluidScheduler, fluidTicker, virtualTime);
             tickChunkWorld(world);
             RegionBlockEventProcessor.process(world, this);
-
             this.tickEntities(world);
-
-            for (ChunkTickManager chunk : region) {
-                chunk.tickBlockEntities(world);
-            }
+            this.tickBlockEntities(world);
         } finally {
             RegionTickContext.end();
+        }
+    }
+
+    private void tickBlockEntities(ServerWorld world) {
+        WorldAccessor accessor = (WorldAccessor) world;
+        List<BlockEntityTickInvoker> tickers = accessor.getBlockEntityTickers();
+        List<BlockEntityTickInvoker> pending = accessor.getPendingBlockEntityTickers();
+
+        accessor.setIteratingTickingBlockEntities(true);
+        try {
+            if (!pending.isEmpty()) {
+                tickers.addAll(pending);
+                pending.clear();
+            }
+
+            boolean shouldTick = world.getTickManager().shouldTick();
+            Iterator<BlockEntityTickInvoker> iterator = tickers.iterator();
+            while (iterator.hasNext()) {
+                BlockEntityTickInvoker invoker = iterator.next();
+                if (invoker.isRemoved()) {
+                    iterator.remove();
+                } else if (shouldTick
+                        && chunkPositions.contains(ChunkPos.toLong(invoker.getPos()))
+                        && world.shouldTickBlockPos(invoker.getPos())) {
+                    invoker.tick();
+                }
+            }
+        } finally {
+            accessor.setIteratingTickingBlockEntities(false);
         }
     }
 

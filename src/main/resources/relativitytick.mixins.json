@@ -16,7 +16,8 @@
     "TickMangerMixin",
     "WorldChunkDirectBlockEntityTickInvokerMixin",
     "WorldMixin",
-    "WorldTickSchedulerAccessor"
+    "WorldTickSchedulerAccessor",
+    "WorldAccessor"
   ],
   "injectors": {
     "defaultRequire": 1
