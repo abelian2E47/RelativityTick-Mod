@@ -1,0 +1,78 @@
+package net.minecraft.command.argument;
+
+import com.mojang.brigadier.ParseResults;
+import com.mojang.brigadier.context.CommandContextBuilder;
+import com.mojang.brigadier.context.ParsedCommandNode;
+import com.mojang.brigadier.tree.ArgumentCommandNode;
+import java.util.ArrayList;
+import java.util.List;
+import javax.annotation.Nullable;
+
+/**
+ * A list of parsed {@linkplain SignedArgumentType signed arguments}.
+ * 
+ * @see #of
+ */
+public record SignedArgumentList<S>(List<SignedArgumentList.ParsedArgument<S>> arguments) {
+    public static <S> boolean isNotEmpty(ParseResults<S> parseResults) {
+        return !of(parseResults).arguments().isEmpty();
+    }
+
+    /**
+     * {@return a new instance of this list from {@code parseResults}}
+     */
+    public static <S> SignedArgumentList<S> of(ParseResults<S> parseResults) {
+        String string = parseResults.getReader().getString();
+        CommandContextBuilder<S> commandContextBuilder = parseResults.getContext();
+        CommandContextBuilder<S> commandContextBuilder2 = commandContextBuilder;
+        List<SignedArgumentList.ParsedArgument<S>> list = collectDecoratableArguments(string, commandContextBuilder2);
+
+        CommandContextBuilder<S> commandContextBuilder3;
+        while (
+            (commandContextBuilder3 = commandContextBuilder2.getChild()) != null && commandContextBuilder3.getRootNode() != commandContextBuilder.getRootNode()
+        ) {
+            list.addAll(collectDecoratableArguments(string, commandContextBuilder3));
+            commandContextBuilder2 = commandContextBuilder3;
+        }
+
+        return new SignedArgumentList<>(list);
+    }
+
+    private static <S> List<SignedArgumentList.ParsedArgument<S>> collectDecoratableArguments(String argumentName, CommandContextBuilder<S> builder) {
+        List<SignedArgumentList.ParsedArgument<S>> list = new ArrayList<>();
+
+        for (ParsedCommandNode<S> parsedCommandNode : builder.getNodes()) {
+            if (parsedCommandNode.getNode() instanceof ArgumentCommandNode<S, ?> argumentCommandNode
+                && argumentCommandNode.getType() instanceof SignedArgumentType) {
+                com.mojang.brigadier.context.ParsedArgument<S, ?> parsedArgument = builder.getArguments().get(argumentCommandNode.getName());
+                if (parsedArgument != null) {
+                    String string = parsedArgument.getRange().get(argumentName);
+                    list.add(new SignedArgumentList.ParsedArgument<>(argumentCommandNode, string));
+                }
+            }
+        }
+
+        return list;
+    }
+
+    @Nullable
+    public SignedArgumentList.ParsedArgument<S> get(String name) {
+        for (SignedArgumentList.ParsedArgument<S> parsedArgument : this.arguments) {
+            if (name.equals(parsedArgument.getNodeName())) {
+                return parsedArgument;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * A parsed signed argument, also used as the entry of {@link SignedArgumentList}.
+     */
+    public record ParsedArgument<S>(ArgumentCommandNode<S, ?> node, String value) {
+        public String getNodeName() {
+            return this.node.getName();
+        }
+    }
+}
+

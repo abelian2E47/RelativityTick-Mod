@@ -11,12 +11,12 @@ import com.abelian.network.EntityStateRecord;
 import net.minecraft.block.Block;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.SpawnGroup;
+import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.fluid.Fluid;
 import net.minecraft.server.world.ServerChunkManager;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.registry.RegistryKey;
-import net.minecraft.world.EntityList;
 import net.minecraft.world.SpawnHelper;
 import net.minecraft.world.SpawnDensityCapper;
 import net.minecraft.world.World;
@@ -64,7 +64,6 @@ public class Region {
     private boolean reachMsptLimit = false;
     private boolean reachTickDurationLimit = false;
 
-    private ArrayList<Entity> regionEntities;
 
     public Region(String id, RegistryKey<World> dimension, Set<Long> chunkPositions){
         this.id = id;
@@ -74,7 +73,6 @@ public class Region {
         }
         this.chunkPositions = new HashSet<>(chunkPositions);
 
-        collectEntities(RelativityTickUtils.getServer().getWorld(dimension));
     }
 
     public boolean addChunk(long chunkPos, ServerWorld world) {
@@ -175,15 +173,6 @@ public class Region {
             tickChunkWorld(world);
             RegionBlockEventProcessor.process(world, this);
 
-//            Set<Entity> entities = new java.util.LinkedHashSet<>();
-//            for (ChunkTickManager chunk : region) {
-//                chunk.collectTickableEntities(world, entities, this);
-//            }
-//            for (Entity entity : entities) {
-//                if (!entity.isRemoved()) {
-//                    tickEntity(world, entity);
-//                }
-//            }
             this.tickEntities(world);
 
             for (ChunkTickManager chunk : region) {
@@ -192,6 +181,23 @@ public class Region {
         } finally {
             RegionTickContext.end();
         }
+    }
+
+    private void tickEntities(ServerWorld world) {
+        ((ServerWorldAccessor) world).getEntityList().forEach(entity -> {
+            if (entity instanceof PlayerEntity || entity.isRemoved()) return;
+            if (!chunkPositions.contains(entity.getChunkPos().toLong())) return;
+            if (!world.shouldTickEntity(entity.getBlockPos())) return;
+            if (!ServerTickBridge.claimEntity(entity, this)) return;
+            if (!isPassenger(entity)) {
+                tickEntity(world, entity);
+            }
+        });
+    }
+
+    private static boolean isPassenger(Entity entity) {
+        Entity vehicle = entity.getVehicle();
+        return vehicle != null && !vehicle.isRemoved() && vehicle.hasPassenger(entity);
     }
 
     private void tickEntity(ServerWorld world, Entity entity) {
@@ -212,28 +218,20 @@ public class Region {
         }
     }
 
-    private void tickEntities(ServerWorld world){
-        for (Entity entity : regionEntities){
-            tickEntity(world ,entity);
-        }
-    }
 
     public List<EntityStateRecord> collectEntityStates(ServerWorld world) {
         List<EntityStateRecord> entityStates = new ArrayList<>();
         if (isControlled()) {
-            Set<Entity> entities = new java.util.LinkedHashSet<>();
-            for (ChunkTickManager chunk : region) {
-                chunk.collectTickableEntities(world, entities, this);
-            }
-            for (Entity entity : entities) {
-                if (!entity.isRemoved()) {
-                    entityStates.add(new EntityStateRecord(
-                            entity.getId(), entity.getX(), entity.getY(), entity.getZ(),
-                            entity.getYaw(), entity.getPitch(),
-                            entity.getVelocity().x, entity.getVelocity().y, entity.getVelocity().z
-                    ));
-                }
-            }
+            ((ServerWorldAccessor) world).getEntityList().forEach(entity -> {
+                if (entity instanceof PlayerEntity || entity.isRemoved()) return;
+                if (!chunkPositions.contains(entity.getChunkPos().toLong())) return;
+                if (!world.shouldTickEntity(entity.getBlockPos())) return;
+                entityStates.add(new EntityStateRecord(
+                        entity.getId(), entity.getX(), entity.getY(), entity.getZ(),
+                        entity.getYaw(), entity.getPitch(),
+                        entity.getVelocity().x, entity.getVelocity().y, entity.getVelocity().z
+                ));
+            });
         }
         return entityStates;
     }
@@ -387,29 +385,6 @@ public class Region {
         this.regionTPS = targetTPS;
     }
 
-    public void collectEntities(ServerWorld world){
-        ServerWorldAccessor accessor = (ServerWorldAccessor) world;
-        EntityList entityList = accessor.getEntityList();
-
-        ArrayList<Entity> regionEntities = new ArrayList<>();
-        Set<Long> chunks = this.getChunkPositions();
-
-        entityList.forEach(entity -> {
-            if (chunks.contains(entity.getChunkPos().toLong()) && ((!regionEntities.isEmpty()) && !regionEntities.contains(entity))){
-                regionEntities.add(entity);
-            }
-        });
-
-        this.regionEntities = regionEntities;
-    }
-
-    public boolean containEntity(Entity entity){
-        return regionEntities.contains(entity);
-    }
-
-    public void addEntity(Entity entity){
-        regionEntities.add(entity);
-    }
 
     public double getTPS() { return regionTPS; }
     public float getRegionTickDuration() { return regionTickDuration; }

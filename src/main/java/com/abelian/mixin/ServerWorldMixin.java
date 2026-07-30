@@ -21,17 +21,12 @@ public abstract class ServerWorldMixin  {
         if (ServerTickBridge.isCustomTickInProgress()) return;
         if (entity instanceof PlayerEntity) return;
         if (entity.getWorld().isClient()) return;
+
+        ServerWorld world = (ServerWorld) entity.getWorld();
         long chunkPosLong = ChunkPos.toLong(entity.getBlockPos());
-        Region region = RegionsManager.getRegionByChunk((ServerWorld) entity.getWorld(), chunkPosLong);
-
-        if (region != null){
-            if(!region.containEntity(entity)){
-                region.addEntity(entity);
-            }
-
-            if (region.isControlled()) {
-                ci.cancel();
-            }
+        Region region = RegionsManager.getRegionByChunk(world, chunkPosLong);
+        if (region != null && region.isControlled()) {
+            ci.cancel();
         }
     }
 

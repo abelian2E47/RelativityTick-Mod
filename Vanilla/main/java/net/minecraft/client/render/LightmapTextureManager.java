@@ -1,0 +1,177 @@
+package net.minecraft.client.render;
+
+import com.mojang.blaze3d.systems.RenderSystem;
+import java.util.Objects;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gl.ShaderProgram;
+import net.minecraft.client.gl.ShaderProgramKeys;
+import net.minecraft.client.gl.SimpleFramebuffer;
+import net.minecraft.client.world.ClientWorld;
+import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.effect.StatusEffectInstance;
+import net.minecraft.entity.effect.StatusEffects;
+import net.minecraft.util.math.MathHelper;
+import net.minecraft.util.profiler.Profiler;
+import net.minecraft.util.profiler.Profilers;
+import net.minecraft.world.dimension.DimensionType;
+import org.joml.Vector3f;
+
+/**
+ * The lightmap texture manager maintains a texture containing the RGBA overlay for each of the 16&times;16 sky and block light combinations.
+ * <p>
+ * Also contains some utilities to pack and unpack lightmap coordinates from sky and block light values,
+ * and some lightmap coordinates constants.
+ */
+@Environment(EnvType.CLIENT)
+public class LightmapTextureManager implements AutoCloseable {
+    /**
+     * Represents the maximum lightmap coordinate, where both sky light and block light equals {@code 15}.
+     * The value of this maximum lightmap coordinate is {@value}.
+     */
+    public static final int MAX_LIGHT_COORDINATE = 15728880;
+    /**
+     * Represents the maximum sky-light-wise lightmap coordinate whose value is {@value}.
+     * This is equivalent to a {@code 15} sky light and {@code 0} block light.
+     */
+    public static final int MAX_SKY_LIGHT_COORDINATE = 15728640;
+    /**
+     * Represents the maximum block-light-wise lightmap coordinate whose value is {@value}.
+     * This is equivalent to a {@code 0} sky light and {@code 15} block light.
+     */
+    public static final int MAX_BLOCK_LIGHT_COORDINATE = 240;
+    private static final int field_53098 = 16;
+    private final SimpleFramebuffer lightmapFramebuffer;
+    private boolean dirty;
+    private float flickerIntensity;
+    private final GameRenderer renderer;
+    private final MinecraftClient client;
+
+    public LightmapTextureManager(GameRenderer renderer, MinecraftClient client) {
+        this.renderer = renderer;
+        this.client = client;
+        this.lightmapFramebuffer = new SimpleFramebuffer(16, 16, false);
+        this.lightmapFramebuffer.setTexFilter(9729);
+        this.lightmapFramebuffer.setClearColor(1.0F, 1.0F, 1.0F, 1.0F);
+        this.lightmapFramebuffer.clear();
+    }
+
+    @Override
+    public void close() {
+        this.lightmapFramebuffer.delete();
+    }
+
+    public void tick() {
+        this.flickerIntensity = this.flickerIntensity + (float)((Math.random() - Math.random()) * Math.random() * Math.random() * 0.1);
+        this.flickerIntensity *= 0.9F;
+        this.dirty = true;
+    }
+
+    public void disable() {
+        RenderSystem.setShaderTexture(2, 0);
+    }
+
+    public void enable() {
+        RenderSystem.setShaderTexture(2, this.lightmapFramebuffer.getColorAttachment());
+    }
+
+    private float getDarknessFactor(float delta) {
+        StatusEffectInstance statusEffectInstance = this.client.player.getStatusEffect(StatusEffects.DARKNESS);
+        return statusEffectInstance != null ? statusEffectInstance.getFadeFactor(this.client.player, delta) : 0.0F;
+    }
+
+    private float getDarkness(LivingEntity entity, float factor, float delta) {
+        float f = 0.45F * factor;
+        return Math.max(0.0F, MathHelper.cos((entity.age - delta) * (float) Math.PI * 0.025F) * f);
+    }
+
+    public void update(float delta) {
+        if (this.dirty) {
+            this.dirty = false;
+            Profiler profiler = Profilers.get();
+            profiler.push("lightTex");
+            ClientWorld clientWorld = this.client.world;
+            if (clientWorld != null) {
+                float f = clientWorld.getSkyBrightness(1.0F);
+                float g;
+                if (clientWorld.getLightningTicksLeft() > 0) {
+                    g = 1.0F;
+                } else {
+                    g = f * 0.95F + 0.05F;
+                }
+
+                float i = this.client.options.getDarknessEffectScale().getValue().floatValue();
+                float j = this.getDarknessFactor(delta) * i;
+                float k = this.getDarkness(this.client.player, j, delta) * i;
+                float l = this.client.player.getUnderwaterVisibility();
+                float m;
+                if (this.client.player.hasStatusEffect(StatusEffects.NIGHT_VISION)) {
+                    m = GameRenderer.getNightVisionStrength(this.client.player, delta);
+                } else if (l > 0.0F && this.client.player.hasStatusEffect(StatusEffects.CONDUIT_POWER)) {
+                    m = l;
+                } else {
+                    m = 0.0F;
+                }
+
+                Vector3f vector3f = new Vector3f(f, f, 1.0F).lerp(new Vector3f(1.0F, 1.0F, 1.0F), 0.35F);
+                float p = this.flickerIntensity + 1.5F;
+                float q = clientWorld.getDimension().ambientLight();
+                boolean bl = clientWorld.getDimensionEffects().shouldBrightenLighting();
+                float r = this.client.options.getGamma().getValue().floatValue();
+                ShaderProgram shaderProgram = Objects.requireNonNull(RenderSystem.setShader(ShaderProgramKeys.LIGHTMAP), "Lightmap shader not loaded");
+                shaderProgram.getUniformOrDefault("AmbientLightFactor").set(q);
+                shaderProgram.getUniformOrDefault("SkyFactor").set(g);
+                shaderProgram.getUniformOrDefault("BlockFactor").set(p);
+                shaderProgram.getUniformOrDefault("UseBrightLightmap").set(bl ? 1 : 0);
+                shaderProgram.getUniformOrDefault("SkyLightColor").set(vector3f);
+                shaderProgram.getUniformOrDefault("NightVisionFactor").set(m);
+                shaderProgram.getUniformOrDefault("DarknessScale").set(k);
+                shaderProgram.getUniformOrDefault("DarkenWorldFactor").set(this.renderer.getSkyDarkness(delta));
+                shaderProgram.getUniformOrDefault("BrightnessFactor").set(Math.max(0.0F, r - j));
+                this.lightmapFramebuffer.beginWrite(true);
+                BufferBuilder bufferBuilder = RenderSystem.renderThreadTesselator().begin(VertexFormat.DrawMode.QUADS, VertexFormats.BLIT_SCREEN);
+                bufferBuilder.vertex(0.0F, 0.0F, 0.0F);
+                bufferBuilder.vertex(1.0F, 0.0F, 0.0F);
+                bufferBuilder.vertex(1.0F, 1.0F, 0.0F);
+                bufferBuilder.vertex(0.0F, 1.0F, 0.0F);
+                BufferRenderer.drawWithGlobalProgram(bufferBuilder.end());
+                this.lightmapFramebuffer.endWrite();
+                profiler.pop();
+            }
+        }
+    }
+
+    public static float getBrightness(DimensionType type, int lightLevel) {
+        return getBrightness(type.ambientLight(), lightLevel);
+    }
+
+    public static float getBrightness(float ambientLight, int lightLevel) {
+        float f = lightLevel / 15.0F;
+        float g = f / (4.0F - 3.0F * f);
+        return MathHelper.lerp(ambientLight, g, 1.0F);
+    }
+
+    public static int pack(int block, int sky) {
+        return block << 4 | sky << 20;
+    }
+
+    public static int getBlockLightCoordinates(int light) {
+        return light >>> 4 & 15;
+    }
+
+    public static int getSkyLightCoordinates(int light) {
+        return light >>> 20 & 15;
+    }
+
+    public static int applyEmission(int light, int lightEmission) {
+        if (lightEmission == 0) {
+            return light;
+        }
+
+        int i = Math.max(getSkyLightCoordinates(light), lightEmission);
+        int j = Math.max(getBlockLightCoordinates(light), lightEmission);
+        return pack(j, i);
+    }
+}
+

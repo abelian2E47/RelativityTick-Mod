@@ -1,0 +1,16 @@
+{
+    size: [1, 2, 2],
+    data: [
+        {pos: [0, 0, 1], state: "minecraft:cobblestone_stairs{half:bottom,waterlogged:false,shape:straight,facing:north}"},
+        {pos: [0, 1, 0], state: "minecraft:cobblestone_stairs{half:bottom,waterlogged:false,shape:straight,facing:south}"},
+        {pos: [0, 1, 1], state: "minecraft:air"},
+        {pos: [0, 0, 0], state: "minecraft:jigsaw{orientation:down_south}", nbt: {final_state: "minecraft:cobblestone", id: "minecraft:jigsaw", joint: "rollable", name: "minecraft:bottom", pool: "minecraft:empty", target: "minecraft:bottom"}}
+    ],
+    entities: [],
+    palette: [
+        "minecraft:cobblestone_stairs{half:bottom,waterlogged:false,shape:straight,facing:north}",
+        "minecraft:cobblestone_stairs{half:bottom,waterlogged:false,shape:straight,facing:south}",
+        "minecraft:air",
+        "minecraft:jigsaw{orientation:down_south}"
+    ]
+}

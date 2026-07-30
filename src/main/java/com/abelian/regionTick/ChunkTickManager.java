@@ -1,28 +1,22 @@
 package com.abelian.regionTick;
 
-import com.abelian.ServerTickBridge;
-import com.abelian.mixin.*;
-import com.abelian.network.EntityStateRecord;
+import com.abelian.mixin.WorldTickSchedulerAccessor;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.block.entity.BlockEntityTicker;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.server.world.ServerEntityManager;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.chunk.WorldChunk;
-import net.minecraft.world.entity.SectionedEntityCache;
 import net.minecraft.world.tick.ChunkTickScheduler;
 import net.minecraft.world.tick.OrderedTick;
 import net.minecraft.world.tick.WorldTickScheduler;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.BiConsumer;
 
 public class ChunkTickManager {
     private final long chunkPosLong;
-    private final List<Entity> entityTickBuffer = new ArrayList<>(128);
     private final List<Object> blockEntityTickBuffer = new ArrayList<>(64);
 
     ChunkTickManager(long chunkPosLong){
@@ -123,28 +117,7 @@ public class ChunkTickManager {
 
         this.blockEntityTickBuffer.clear();
     }
-
-    @SuppressWarnings("unchecked")
-    void collectTickableEntities(ServerWorld world, Collection<Entity> entities, Region owner) {
-        ServerEntityManager<Entity> entityManager = ((ServerWorldEntityAccessor) world).getEntityManager();
-        SectionedEntityCache<Entity> cache = ((ServerEntityManagerAccessor<Entity>) entityManager).getCache();
-
-        cache.getTrackingSections(this.chunkPosLong).forEach(section -> {
-            if (!section.getStatus().shouldTick()) return;
-            section.stream().forEach(entity -> {
-                if (entity instanceof PlayerEntity || entity.isRemoved() || isPassenger(entity)) return;
-                if (!world.shouldTickEntity(entity.getBlockPos())) return;
-                if (owner != null && !ServerTickBridge.claimEntity(entity, owner)) return;
-                entities.add(entity);
-            });
-        });
-    }
-
-    private static boolean isPassenger(Entity entity) {
-        Entity vehicle = entity.getVehicle();
-        return vehicle != null && !vehicle.isRemoved() && vehicle.hasPassenger(entity);
-    }
-
 }
+
 
 

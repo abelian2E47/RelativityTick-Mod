@@ -1,0 +1,62 @@
+package net.minecraft.stat;
+
+import java.util.Objects;
+import javax.annotation.Nullable;
+import net.minecraft.network.RegistryByteBuf;
+import net.minecraft.network.codec.PacketCodec;
+import net.minecraft.network.codec.PacketCodecs;
+import net.minecraft.registry.Registries;
+import net.minecraft.registry.RegistryKeys;
+import net.minecraft.scoreboard.ScoreboardCriterion;
+import net.minecraft.util.Identifier;
+
+public class Stat<T> extends ScoreboardCriterion {
+    public static final PacketCodec<RegistryByteBuf, Stat<?>> PACKET_CODEC = PacketCodecs.registryValue(RegistryKeys.STAT_TYPE)
+        .dispatch(Stat::getType, StatType::getPacketCodec);
+    private final StatFormatter formatter;
+    private final T value;
+    private final StatType<T> type;
+
+    protected Stat(StatType<T> type, T value, StatFormatter formatter) {
+        super(getName(type, value));
+        this.type = type;
+        this.formatter = formatter;
+        this.value = value;
+    }
+
+    public static <T> String getName(StatType<T> type, T value) {
+        return getName(Registries.STAT_TYPE.getId(type)) + ":" + getName(type.getRegistry().getId(value));
+    }
+
+    private static <T> String getName(@Nullable Identifier id) {
+        return id.toString().replace(':', '.');
+    }
+
+    public StatType<T> getType() {
+        return this.type;
+    }
+
+    public T getValue() {
+        return this.value;
+    }
+
+    public String format(int value) {
+        return this.formatter.format(value);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        return this == o || o instanceof Stat && Objects.equals(this.getName(), ((Stat)o).getName());
+    }
+
+    @Override
+    public int hashCode() {
+        return this.getName().hashCode();
+    }
+
+    @Override
+    public String toString() {
+        return "Stat{name=" + this.getName() + ", formatter=" + this.formatter + "}";
+    }
+}
+
