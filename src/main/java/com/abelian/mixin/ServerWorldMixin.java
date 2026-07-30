@@ -24,8 +24,14 @@ public abstract class ServerWorldMixin  {
         long chunkPosLong = ChunkPos.toLong(entity.getBlockPos());
         Region region = RegionsManager.getRegionByChunk((ServerWorld) entity.getWorld(), chunkPosLong);
 
-        if (region != null && region.isControlled()) {
-            ci.cancel();
+        if (region != null){
+            if(!region.containEntity(entity)){
+                region.addEntity(entity);
+            }
+
+            if (region.isControlled()) {
+                ci.cancel();
+            }
         }
     }
 

@@ -39,8 +39,6 @@ public class RelativityTickUtils {
         return steps;
     }
 
-
-
     public static double getServerMspt(MinecraftServer server) {
         double MSPT = server.getAverageTickTime();
         return truncate(MSPT,4);

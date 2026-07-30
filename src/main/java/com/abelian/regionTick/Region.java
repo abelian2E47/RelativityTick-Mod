@@ -1,5 +1,6 @@
 package com.abelian.regionTick;
 
+import com.abelian.RelativityTickUtils;
 import com.abelian.config.RelativityTickConfig;
 import com.abelian.RegionTickContext;
 import com.abelian.ServerTickBridge;
@@ -15,6 +16,7 @@ import net.minecraft.server.world.ServerChunkManager;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.registry.RegistryKey;
+import net.minecraft.world.EntityList;
 import net.minecraft.world.SpawnHelper;
 import net.minecraft.world.SpawnDensityCapper;
 import net.minecraft.world.World;
@@ -62,7 +64,7 @@ public class Region {
     private boolean reachMsptLimit = false;
     private boolean reachTickDurationLimit = false;
 
-    
+    private ArrayList<Entity> regionEntities;
 
     public Region(String id, RegistryKey<World> dimension, Set<Long> chunkPositions){
         this.id = id;
@@ -71,6 +73,8 @@ public class Region {
             region.add(new ChunkTickManager(chunkPos));
         }
         this.chunkPositions = new HashSet<>(chunkPositions);
+
+        collectEntities(RelativityTickUtils.getServer().getWorld(dimension));
     }
 
     public boolean addChunk(long chunkPos, ServerWorld world) {
@@ -171,15 +175,16 @@ public class Region {
             tickChunkWorld(world);
             RegionBlockEventProcessor.process(world, this);
 
-            Set<Entity> entities = new java.util.LinkedHashSet<>();
-            for (ChunkTickManager chunk : region) {
-                chunk.collectTickableEntities(world, entities, this);
-            }
-            for (Entity entity : entities) {
-                if (!entity.isRemoved()) {
-                    tickEntity(world, entity);
-                }
-            }
+//            Set<Entity> entities = new java.util.LinkedHashSet<>();
+//            for (ChunkTickManager chunk : region) {
+//                chunk.collectTickableEntities(world, entities, this);
+//            }
+//            for (Entity entity : entities) {
+//                if (!entity.isRemoved()) {
+//                    tickEntity(world, entity);
+//                }
+//            }
+            this.tickEntities(world);
 
             for (ChunkTickManager chunk : region) {
                 chunk.tickBlockEntities(world);
@@ -189,7 +194,7 @@ public class Region {
         }
     }
 
-    private static void tickEntity(ServerWorld world, Entity entity) {
+    private void tickEntity(ServerWorld world, Entity entity) {
         Entity vehicle = entity.getVehicle();
         if (vehicle != null) {
             if (!vehicle.isRemoved() && vehicle.hasPassenger(entity)) return;
@@ -204,6 +209,12 @@ public class Region {
             ((ServerWorldAccessor) world).invokeTickEntity(entity);
         } finally {
             ServerTickBridge.setCustomTickInProgress(false);
+        }
+    }
+
+    private void tickEntities(ServerWorld world){
+        for (Entity entity : regionEntities){
+            tickEntity(world ,entity);
         }
     }
 
@@ -340,6 +351,7 @@ public class Region {
     public void stepRegionTime(){regionTime++;}
 
     public int getRegionTime(){return regionTime;}
+
     public void setRegionTime(int regionTime) { this.regionTime = regionTime; }
 
     public void recordGlobalTickSteps(int stepsTaken) {
@@ -373,6 +385,30 @@ public class Region {
         this.recentStepCursor = 0;
         this.recentStepSamples = TPS_AVERAGE_WINDOW_GT;
         this.regionTPS = targetTPS;
+    }
+
+    public void collectEntities(ServerWorld world){
+        ServerWorldAccessor accessor = (ServerWorldAccessor) world;
+        EntityList entityList = accessor.getEntityList();
+
+        ArrayList<Entity> regionEntities = new ArrayList<>();
+        Set<Long> chunks = this.getChunkPositions();
+
+        entityList.forEach(entity -> {
+            if (chunks.contains(entity.getChunkPos().toLong()) && ((!regionEntities.isEmpty()) && !regionEntities.contains(entity))){
+                regionEntities.add(entity);
+            }
+        });
+
+        this.regionEntities = regionEntities;
+    }
+
+    public boolean containEntity(Entity entity){
+        return regionEntities.contains(entity);
+    }
+
+    public void addEntity(Entity entity){
+        regionEntities.add(entity);
     }
 
     public double getTPS() { return regionTPS; }

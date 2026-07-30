@@ -42,7 +42,7 @@ public class RelativityTickClient implements ClientModInitializer {
 		startSelectingKeyBinding = KeyBindingHelper.registerKeyBinding(new KeyBinding(
 				"key.relativitytick.start_selecting",
 				InputUtil.Type.KEYSYM,
-				InputUtil.GLFW_KEY_R,
+				InputUtil.UNKNOWN_KEY.getCode(),
 				"category.relativitytick"));
 
 

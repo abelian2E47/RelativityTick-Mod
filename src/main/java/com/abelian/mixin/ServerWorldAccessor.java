@@ -16,7 +16,9 @@ public interface ServerWorldAccessor {
     @Accessor("syncedBlockEventQueue")
     ObjectLinkedOpenHashSet<BlockEvent> getSyncedBlockEventQueue();
 
-
     @Invoker("processBlockEvent")
     boolean invokeProcessBlockEvent(BlockEvent event);
+
+    @Accessor("entityList")
+    net.minecraft.world.EntityList getEntityList();
 }

@@ -15,6 +15,7 @@
     "SpawnHelperMixin",
     "TickMangerMixin",
     "WorldChunkDirectBlockEntityTickInvokerMixin",
+    "WorldMixin",
     "WorldTickSchedulerAccessor"
   ],
   "injectors": {
