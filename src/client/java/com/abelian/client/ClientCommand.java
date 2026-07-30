@@ -39,14 +39,12 @@ public class ClientCommand {
                         .then(CommandManager.literal("remove")
                                 .executes(context -> removeChunk(context.getSource()))
                         )
-                )
-        );
-
-        dispatcher.register(CommandManager.literal("tickManager")
-                .requires(source -> source.hasPermissionLevel(2))
-                .then(CommandManager.literal("chunk")
-                        .then(CommandManager.literal("select").executes(context -> select(context.getSource())))
-                        .then(CommandManager.literal("confirm").executes(context -> confirm(context.getSource())))
+                        .then(CommandManager.literal("select")
+                                .executes(context -> select(context.getSource()))
+                        )
+                        .then(CommandManager.literal("confirm")
+                                .executes(context -> confirm(context.getSource()))
+                        )
                 )
         );
     }
