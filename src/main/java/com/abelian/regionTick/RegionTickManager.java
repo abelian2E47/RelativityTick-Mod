@@ -191,32 +191,12 @@ public class RegionTickManager {
     }
 
     private void tickBlockEntities(ServerWorld world) {
-        WorldAccessor accessor = (WorldAccessor) world;
-        List<BlockEntityTickInvoker> tickers = accessor.getBlockEntityTickers();
-        List<BlockEntityTickInvoker> pending = accessor.getPendingBlockEntityTickers();
-
-        accessor.setIteratingTickingBlockEntities(true);
-        try {
-            if (!pending.isEmpty()) {
-                tickers.addAll(pending);
-                pending.clear();
+        boolean shouldTick = world.getTickManager().shouldTick();
+        ServerTickBridge.forEachBlockEntityTicker(world, chunkPositions, invoker -> {
+            if (shouldTick && world.shouldTickBlockPos(invoker.getPos())) {
+                invoker.tick();
             }
-
-            boolean shouldTick = world.getTickManager().shouldTick();
-            Iterator<BlockEntityTickInvoker> iterator = tickers.iterator();
-            while (iterator.hasNext()) {
-                BlockEntityTickInvoker invoker = iterator.next();
-                if (invoker.isRemoved()) {
-                    iterator.remove();
-                } else if (shouldTick
-                        && chunkPositions.contains(ChunkPos.toLong(invoker.getPos()))
-                        && world.shouldTickBlockPos(invoker.getPos())) {
-                    invoker.tick();
-                }
-            }
-        } finally {
-            accessor.setIteratingTickingBlockEntities(false);
-        }
+        });
     }
 
     private void tickEntities(ServerWorld world) {
