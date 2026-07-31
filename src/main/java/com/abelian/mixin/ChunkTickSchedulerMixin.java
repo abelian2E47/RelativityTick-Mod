@@ -29,7 +29,7 @@ public abstract class ChunkTickSchedulerMixin<T> {
             return;
         }
 
-        //换算到区域虚拟时间轴
+        //换算到区域时间轴
         long startTime = region.getFreezeStartTime();
         int stepped = region.getStepped();
         long currentTime = region.getCurrentWorldTime();

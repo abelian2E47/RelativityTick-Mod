@@ -1,0 +1,534 @@
+package net.minecraft.client.font;
+
+import com.google.common.collect.Lists;
+import java.util.List;
+import java.util.ListIterator;
+import java.util.Optional;
+import java.util.function.BiConsumer;
+import java.util.stream.Collectors;
+import javax.annotation.Nullable;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
+import net.minecraft.client.util.TextCollector;
+import net.minecraft.text.CharacterVisitor;
+import net.minecraft.text.OrderedText;
+import net.minecraft.text.StringVisitable;
+import net.minecraft.text.Style;
+import net.minecraft.text.TextVisitFactory;
+import org.apache.commons.lang3.mutable.MutableFloat;
+import org.apache.commons.lang3.mutable.MutableInt;
+import org.apache.commons.lang3.mutable.MutableObject;
+
+@Environment(EnvType.CLIENT)
+public class TextHandler {
+    final TextHandler.WidthRetriever widthRetriever;
+
+    public TextHandler(TextHandler.WidthRetriever widthRetriever) {
+        this.widthRetriever = widthRetriever;
+    }
+
+    /**
+     * {@return the width of a string}
+     */
+    public float getWidth(@Nullable String text) {
+        if (text == null) {
+            return 0.0F;
+        }
+
+        MutableFloat mutableFloat = new MutableFloat();
+        TextVisitFactory.visitFormatted(text, Style.EMPTY, (unused, style, codePoint) -> {
+            mutableFloat.add(this.widthRetriever.getWidth(codePoint, style));
+            return true;
+        });
+        return mutableFloat.floatValue();
+    }
+
+    /**
+     * {@return the width of a text}
+     */
+    public float getWidth(StringVisitable text) {
+        MutableFloat mutableFloat = new MutableFloat();
+        TextVisitFactory.visitFormatted(text, Style.EMPTY, (unused, style, codePoint) -> {
+            mutableFloat.add(this.widthRetriever.getWidth(codePoint, style));
+            return true;
+        });
+        return mutableFloat.floatValue();
+    }
+
+    public float getWidth(OrderedText text) {
+        MutableFloat mutableFloat = new MutableFloat();
+        text.accept((index, style, codePoint) -> {
+            mutableFloat.add(this.widthRetriever.getWidth(codePoint, style));
+            return true;
+        });
+        return mutableFloat.floatValue();
+    }
+
+    /**
+     * {@return the length of a string when it is trimmed to be at most {@code
+     * maxWidth} wide}
+     * 
+     * @param text the string to trim
+     * @param maxWidth the max width of the trimmed string
+     * @param style the style of the trimmed string
+     */
+    public int getTrimmedLength(String text, int maxWidth, Style style) {
+        TextHandler.WidthLimitingVisitor widthLimitingVisitor = new TextHandler.WidthLimitingVisitor(maxWidth);
+        TextVisitFactory.visitForwards(text, style, widthLimitingVisitor);
+        return widthLimitingVisitor.getLength();
+    }
+
+    /**
+     * Trim a string to be at most {@code maxWidth} wide.
+     * 
+     * @return the trimmed string
+     * 
+     * @param text the string to trim
+     * @param maxWidth the max width of the trimmed string
+     * @param style the style of the trimmed string
+     */
+    public String trimToWidth(String text, int maxWidth, Style style) {
+        return text.substring(0, this.getTrimmedLength(text, maxWidth, style));
+    }
+
+    /**
+     * Trim a string from right to left to be at most {@code maxWidth} wide.
+     * 
+     * @return the trimmed string
+     * 
+     * @param text the string to trim
+     * @param maxWidth the max width of the trimmed string
+     * @param style the style of the trimmed string
+     */
+    public String trimToWidthBackwards(String text, int maxWidth, Style style) {
+        MutableFloat mutableFloat = new MutableFloat();
+        MutableInt mutableInt = new MutableInt(text.length());
+        TextVisitFactory.visitBackwards(text, style, (index, stylex, codePoint) -> {
+            float f = mutableFloat.addAndGet(this.widthRetriever.getWidth(codePoint, stylex));
+            if (f > maxWidth) {
+                return false;
+            }
+
+            mutableInt.setValue(index);
+            return true;
+        });
+        return text.substring(mutableInt.intValue());
+    }
+
+    public int getLimitedStringLength(String text, int maxWidth, Style style) {
+        TextHandler.WidthLimitingVisitor widthLimitingVisitor = new TextHandler.WidthLimitingVisitor(maxWidth);
+        TextVisitFactory.visitFormatted(text, style, widthLimitingVisitor);
+        return widthLimitingVisitor.getLength();
+    }
+
+    /**
+     * {@return the style at the {@code x} position in a text}
+     * 
+     * @param x the position in the text
+     */
+    @Nullable
+    public Style getStyleAt(StringVisitable text, int x) {
+        TextHandler.WidthLimitingVisitor widthLimitingVisitor = new TextHandler.WidthLimitingVisitor(x);
+        return text.<Style>visit(
+                (style, textx) -> TextVisitFactory.visitFormatted(textx, style, widthLimitingVisitor) ? Optional.empty() : Optional.of(style), Style.EMPTY
+            )
+            .orElse(null);
+    }
+
+    /**
+     * Gets the style at the {@code x} position in a text.
+     * 
+     * @return a style
+     * 
+     * @param x the position in the text
+     */
+    @Nullable
+    public Style getStyleAt(OrderedText text, int x) {
+        TextHandler.WidthLimitingVisitor widthLimitingVisitor = new TextHandler.WidthLimitingVisitor(x);
+        MutableObject<Style> mutableObject = new MutableObject<>();
+        text.accept((index, style, codePoint) -> {
+            if (!widthLimitingVisitor.accept(index, style, codePoint)) {
+                mutableObject.setValue(style);
+                return false;
+            } else {
+                return true;
+            }
+        });
+        return mutableObject.getValue();
+    }
+
+    public String limitString(String text, int maxWidth, Style style) {
+        return text.substring(0, this.getLimitedStringLength(text, maxWidth, style));
+    }
+
+    public StringVisitable trimToWidth(StringVisitable text, int width, Style style) {
+        final TextHandler.WidthLimitingVisitor widthLimitingVisitor = new TextHandler.WidthLimitingVisitor(width);
+        return text.visit(new StringVisitable.StyledVisitor<StringVisitable>() {
+            private final TextCollector collector = new TextCollector();
+
+            @Override
+            public Optional<StringVisitable> accept(Style style, String asString) {
+                widthLimitingVisitor.resetLength();
+                if (!TextVisitFactory.visitFormatted(asString, style, widthLimitingVisitor)) {
+                    String string = asString.substring(0, widthLimitingVisitor.getLength());
+                    if (!string.isEmpty()) {
+                        this.collector.add(StringVisitable.styled(string, style));
+                    }
+
+                    return Optional.of(this.collector.getCombined());
+                } else {
+                    if (!asString.isEmpty()) {
+                        this.collector.add(StringVisitable.styled(asString, style));
+                    }
+
+                    return Optional.empty();
+                }
+            }
+        }, style).orElse(text);
+    }
+
+    public int getEndingIndex(String text, int maxWidth, Style style) {
+        TextHandler.LineBreakingVisitor lineBreakingVisitor = new TextHandler.LineBreakingVisitor(maxWidth);
+        TextVisitFactory.visitFormatted(text, style, lineBreakingVisitor);
+        return lineBreakingVisitor.getEndingIndex();
+    }
+
+    public static int moveCursorByWords(String text, int offset, int cursor, boolean consumeSpaceOrBreak) {
+        int i = cursor;
+        boolean bl = offset < 0;
+        int j = Math.abs(offset);
+
+        for (int k = 0; k < j; k++) {
+            if (bl) {
+                while (consumeSpaceOrBreak && i > 0 && (text.charAt(i - 1) == ' ' || text.charAt(i - 1) == '\n')) {
+                    i--;
+                }
+
+                while (i > 0 && text.charAt(i - 1) != ' ' && text.charAt(i - 1) != '\n') {
+                    i--;
+                }
+            } else {
+                int l = text.length();
+                int m = text.indexOf(32, i);
+                int n = text.indexOf(10, i);
+                if (m == -1 && n == -1) {
+                    i = -1;
+                } else if (m != -1 && n != -1) {
+                    i = Math.min(m, n);
+                } else if (m != -1) {
+                    i = m;
+                } else {
+                    i = n;
+                }
+
+                if (i == -1) {
+                    i = l;
+                } else {
+                    while (consumeSpaceOrBreak && i < l && (text.charAt(i) == ' ' || text.charAt(i) == '\n')) {
+                        i++;
+                    }
+                }
+            }
+        }
+
+        return i;
+    }
+
+    public void wrapLines(String text, int maxWidth, Style style, boolean retainTrailingWordSplit, TextHandler.LineWrappingConsumer consumer) {
+        int i = 0;
+        int j = text.length();
+        Style style2 = style;
+
+        while (i < j) {
+            TextHandler.LineBreakingVisitor lineBreakingVisitor = new TextHandler.LineBreakingVisitor(maxWidth);
+            boolean bl = TextVisitFactory.visitFormatted(text, i, style2, style, lineBreakingVisitor);
+            if (bl) {
+                consumer.accept(style2, i, j);
+                break;
+            }
+
+            int k = lineBreakingVisitor.getEndingIndex();
+            char c = text.charAt(k);
+            int l = c != '\n' && c != ' ' ? k : k + 1;
+            consumer.accept(style2, i, retainTrailingWordSplit ? l : k);
+            i = l;
+            style2 = lineBreakingVisitor.getEndingStyle();
+        }
+    }
+
+    public List<StringVisitable> wrapLines(String text, int maxWidth, Style style) {
+        List<StringVisitable> list = Lists.newArrayList();
+        this.wrapLines(text, maxWidth, style, false, (stylex, start, end) -> list.add(StringVisitable.styled(text.substring(start, end), stylex)));
+        return list;
+    }
+
+    public List<StringVisitable> wrapLines(StringVisitable text, int maxWidth, Style style) {
+        List<StringVisitable> list = Lists.newArrayList();
+        this.wrapLines(text, maxWidth, style, (textx, lastLineWrapped) -> list.add(textx));
+        return list;
+    }
+
+    public List<StringVisitable> wrapLines(StringVisitable text, int maxWidth, Style style, StringVisitable wrappedLinePrefix) {
+        List<StringVisitable> list = Lists.newArrayList();
+        this.wrapLines(text, maxWidth, style, (textx, lastLineWrapped) -> list.add(lastLineWrapped ? StringVisitable.concat(wrappedLinePrefix, textx) : textx));
+        return list;
+    }
+
+    public void wrapLines(StringVisitable text, int maxWidth, Style style, BiConsumer<StringVisitable, Boolean> lineConsumer) {
+        List<TextHandler.StyledString> list = Lists.newArrayList();
+        text.visit((stylex, textx) -> {
+            if (!textx.isEmpty()) {
+                list.add(new TextHandler.StyledString(textx, stylex));
+            }
+
+            return Optional.empty();
+        }, style);
+        TextHandler.LineWrappingCollector lineWrappingCollector = new TextHandler.LineWrappingCollector(list);
+        boolean bl = true;
+        boolean bl2 = false;
+        boolean bl3 = false;
+
+        while (bl) {
+            bl = false;
+            TextHandler.LineBreakingVisitor lineBreakingVisitor = new TextHandler.LineBreakingVisitor(maxWidth);
+
+            for (TextHandler.StyledString styledString : lineWrappingCollector.parts) {
+                boolean bl4 = TextVisitFactory.visitFormatted(styledString.literal, 0, styledString.style, style, lineBreakingVisitor);
+                if (!bl4) {
+                    int i = lineBreakingVisitor.getEndingIndex();
+                    Style style2 = lineBreakingVisitor.getEndingStyle();
+                    char c = lineWrappingCollector.charAt(i);
+                    boolean bl5 = c == '\n';
+                    boolean bl6 = bl5 || c == ' ';
+                    bl2 = bl5;
+                    StringVisitable stringVisitable = lineWrappingCollector.collectLine(i, bl6 ? 1 : 0, style2);
+                    lineConsumer.accept(stringVisitable, bl3);
+                    bl3 = !bl5;
+                    bl = true;
+                    break;
+                }
+
+                lineBreakingVisitor.offset(styledString.literal.length());
+            }
+        }
+
+        StringVisitable stringVisitable2 = lineWrappingCollector.collectRemainders();
+        if (stringVisitable2 != null) {
+            lineConsumer.accept(stringVisitable2, bl3);
+        } else if (bl2) {
+            lineConsumer.accept(StringVisitable.EMPTY, false);
+        }
+    }
+
+    @Environment(EnvType.CLIENT)
+    class LineBreakingVisitor implements CharacterVisitor {
+        private final float maxWidth;
+        private int endIndex = -1;
+        private Style endStyle = Style.EMPTY;
+        private boolean nonEmpty;
+        private float totalWidth;
+        private int lastSpaceBreak = -1;
+        private Style lastSpaceStyle = Style.EMPTY;
+        private int count;
+        private int startOffset;
+
+        public LineBreakingVisitor(final float maxWidth) {
+            this.maxWidth = Math.max(maxWidth, 1.0F);
+        }
+
+        @Override
+        public boolean accept(int index, Style style, int codePoint) {
+            int i = index + this.startOffset;
+            switch (codePoint) {
+                case 10:
+                    return this.breakLine(i, style);
+                case 32:
+                    this.lastSpaceBreak = i;
+                    this.lastSpaceStyle = style;
+                default:
+                    float f = TextHandler.this.widthRetriever.getWidth(codePoint, style);
+                    this.totalWidth += f;
+                    if (!this.nonEmpty || !(this.totalWidth > this.maxWidth)) {
+                        this.nonEmpty |= f != 0.0F;
+                        this.count = i + Character.charCount(codePoint);
+                        return true;
+                    } else {
+                        return this.lastSpaceBreak != -1 ? this.breakLine(this.lastSpaceBreak, this.lastSpaceStyle) : this.breakLine(i, style);
+                    }
+            }
+        }
+
+        private boolean breakLine(int finishIndex, Style finishStyle) {
+            this.endIndex = finishIndex;
+            this.endStyle = finishStyle;
+            return false;
+        }
+
+        private boolean hasLineBreak() {
+            return this.endIndex != -1;
+        }
+
+        public int getEndingIndex() {
+            return this.hasLineBreak() ? this.endIndex : this.count;
+        }
+
+        public Style getEndingStyle() {
+            return this.endStyle;
+        }
+
+        public void offset(int extraOffset) {
+            this.startOffset += extraOffset;
+        }
+    }
+
+    @Environment(EnvType.CLIENT)
+    static class LineWrappingCollector {
+        final List<TextHandler.StyledString> parts;
+        private String joined;
+
+        public LineWrappingCollector(List<TextHandler.StyledString> parts) {
+            this.parts = parts;
+            this.joined = parts.stream().map(part -> part.literal).collect(Collectors.joining());
+        }
+
+        public char charAt(int index) {
+            return this.joined.charAt(index);
+        }
+
+        public StringVisitable collectLine(int lineLength, int skippedLength, Style style) {
+            TextCollector textCollector = new TextCollector();
+            ListIterator<TextHandler.StyledString> listIterator = this.parts.listIterator();
+            int i = lineLength;
+            boolean bl = false;
+
+            while (listIterator.hasNext()) {
+                TextHandler.StyledString styledString = listIterator.next();
+                String string = styledString.literal;
+                int j = string.length();
+                if (!bl) {
+                    if (i > j) {
+                        textCollector.add(styledString);
+                        listIterator.remove();
+                        i -= j;
+                    } else {
+                        String string2 = string.substring(0, i);
+                        if (!string2.isEmpty()) {
+                            textCollector.add(StringVisitable.styled(string2, styledString.style));
+                        }
+
+                        i += skippedLength;
+                        bl = true;
+                    }
+                }
+
+                if (bl) {
+                    if (i <= j) {
+                        String string3 = string.substring(i);
+                        if (string3.isEmpty()) {
+                            listIterator.remove();
+                        } else {
+                            listIterator.set(new TextHandler.StyledString(string3, style));
+                        }
+                        break;
+                    }
+
+                    listIterator.remove();
+                    i -= j;
+                }
+            }
+
+            this.joined = this.joined.substring(lineLength + skippedLength);
+            return textCollector.getCombined();
+        }
+
+        @Nullable
+        public StringVisitable collectRemainders() {
+            TextCollector textCollector = new TextCollector();
+            this.parts.forEach(textCollector::add);
+            this.parts.clear();
+            return textCollector.getRawCombined();
+        }
+    }
+
+    /**
+     * A consumer of the line-breaking information.
+     */
+    @FunctionalInterface
+    @Environment(EnvType.CLIENT)
+    public interface LineWrappingConsumer {
+        /**
+         * Accepts the information on a line-wrap segment.
+         * 
+         * @param style the style of this line segment
+         * @param start the start index of this segment in the original string, inclusive
+         * @param end the end index of this segment in the original string, exclusive
+         */
+        void accept(Style style, int start, int end);
+    }
+
+    @Environment(EnvType.CLIENT)
+    static class StyledString implements StringVisitable {
+        final String literal;
+        final Style style;
+
+        public StyledString(String literal, Style style) {
+            this.literal = literal;
+            this.style = style;
+        }
+
+        @Override
+        public <T> Optional<T> visit(StringVisitable.Visitor<T> visitor) {
+            return visitor.accept(this.literal);
+        }
+
+        @Override
+        public <T> Optional<T> visit(StringVisitable.StyledVisitor<T> styledVisitor, Style style) {
+            return styledVisitor.accept(this.style.withParent(style), this.literal);
+        }
+    }
+
+    @Environment(EnvType.CLIENT)
+    class WidthLimitingVisitor implements CharacterVisitor {
+        private float widthLeft;
+        private int length;
+
+        public WidthLimitingVisitor(final float maxWidth) {
+            this.widthLeft = maxWidth;
+        }
+
+        @Override
+        public boolean accept(int index, Style style, int codePoint) {
+            this.widthLeft = this.widthLeft - TextHandler.this.widthRetriever.getWidth(codePoint, style);
+            if (this.widthLeft >= 0.0F) {
+                this.length = index + Character.charCount(codePoint);
+                return true;
+            } else {
+                return false;
+            }
+        }
+
+        public int getLength() {
+            return this.length;
+        }
+
+        public void resetLength() {
+            this.length = 0;
+        }
+    }
+
+    /**
+     * A retriever of character width.
+     */
+    @FunctionalInterface
+    @Environment(EnvType.CLIENT)
+    public interface WidthRetriever {
+        /**
+         * {@return the width of a character}
+         * 
+         * @param codePoint the character's code point
+         * @param style the style of the character, carrying font and formatting information
+         */
+        float getWidth(int codePoint, Style style);
+    }
+}
+

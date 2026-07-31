@@ -1,0 +1,426 @@
+package net.minecraft.client.realms;
+
+import com.google.common.hash.Hashing;
+import com.google.common.io.Files;
+import com.mojang.logging.LogUtils;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.io.BufferedInputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import javax.annotation.Nullable;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
+import net.minecraft.SharedConstants;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.realms.dto.WorldDownload;
+import net.minecraft.client.realms.exception.RealmsDefaultUncaughtExceptionHandler;
+import net.minecraft.client.realms.gui.screen.RealmsDownloadLatestWorldScreen;
+import net.minecraft.nbt.NbtCrashException;
+import net.minecraft.nbt.NbtException;
+import net.minecraft.util.path.SymlinkValidationException;
+import net.minecraft.world.level.storage.LevelStorage;
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
+import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
+import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
+import org.apache.commons.io.output.CountingOutputStream;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.config.RequestConfig;
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClientBuilder;
+import org.slf4j.Logger;
+
+@Environment(EnvType.CLIENT)
+public class FileDownload {
+    static final Logger LOGGER = LogUtils.getLogger();
+    volatile boolean cancelled;
+    volatile boolean finished;
+    volatile boolean error;
+    volatile boolean extracting;
+    @Nullable
+    private volatile File backupFile;
+    volatile File resourcePackPath;
+    @Nullable
+    private volatile HttpGet httpRequest;
+    @Nullable
+    private Thread currentThread;
+    private final RequestConfig requestConfig = RequestConfig.custom().setSocketTimeout(120000).setConnectTimeout(120000).build();
+    private static final String[] INVALID_FILE_NAMES = new String[]{
+        "CON",
+        "COM",
+        "PRN",
+        "AUX",
+        "CLOCK$",
+        "NUL",
+        "COM1",
+        "COM2",
+        "COM3",
+        "COM4",
+        "COM5",
+        "COM6",
+        "COM7",
+        "COM8",
+        "COM9",
+        "LPT1",
+        "LPT2",
+        "LPT3",
+        "LPT4",
+        "LPT5",
+        "LPT6",
+        "LPT7",
+        "LPT8",
+        "LPT9"
+    };
+
+    public long contentLength(String downloadLink) {
+        CloseableHttpClient closeableHttpClient = null;
+        HttpGet httpGet = null;
+
+        try {
+            httpGet = new HttpGet(downloadLink);
+            closeableHttpClient = HttpClientBuilder.create().setDefaultRequestConfig(this.requestConfig).build();
+            CloseableHttpResponse closeableHttpResponse = closeableHttpClient.execute(httpGet);
+            return Long.parseLong(closeableHttpResponse.getFirstHeader("Content-Length").getValue());
+        } catch (Throwable throwable) {
+            LOGGER.error("Unable to get content length for download");
+            return 0L;
+        } finally {
+            if (httpGet != null) {
+                httpGet.releaseConnection();
+            }
+
+            if (closeableHttpClient != null) {
+                try {
+                    closeableHttpClient.close();
+                } catch (IOException iOException3) {
+                    LOGGER.error("Could not close http client", iOException3);
+                }
+            }
+        }
+    }
+
+    public void downloadWorld(WorldDownload download, String message, RealmsDownloadLatestWorldScreen.DownloadStatus status, LevelStorage storage) {
+        if (this.currentThread == null) {
+            this.currentThread = new Thread(
+                () -> {
+                    CloseableHttpClient closeableHttpClient = null;
+
+                    try {
+                        this.backupFile = File.createTempFile("backup", ".tar.gz");
+                        this.httpRequest = new HttpGet(download.downloadLink);
+                        closeableHttpClient = HttpClientBuilder.create().setDefaultRequestConfig(this.requestConfig).build();
+                        HttpResponse httpResponse = closeableHttpClient.execute(this.httpRequest);
+                        status.totalBytes = Long.parseLong(httpResponse.getFirstHeader("Content-Length").getValue());
+                        if (httpResponse.getStatusLine().getStatusCode() == 200) {
+                            OutputStream outputStream2 = new FileOutputStream(this.backupFile);
+                            FileDownload.ProgressListener progressListener = new FileDownload.ProgressListener(message.trim(), this.backupFile, storage, status);
+                            FileDownload.DownloadCountingOutputStream downloadCountingOutputStream2 = new FileDownload.DownloadCountingOutputStream(
+                                outputStream2
+                            );
+                            downloadCountingOutputStream2.setListener(progressListener);
+                            IOUtils.copy(httpResponse.getEntity().getContent(), downloadCountingOutputStream2);
+                            return;
+                        }
+
+                        this.error = true;
+                        this.httpRequest.abort();
+                    } catch (Exception exception3) {
+                        LOGGER.error("Caught exception while downloading: {}", exception3.getMessage());
+                        this.error = true;
+                        return;
+                    } finally {
+                        this.httpRequest.releaseConnection();
+                        if (this.backupFile != null) {
+                            this.backupFile.delete();
+                        }
+
+                        if (!this.error) {
+                            if (!download.resourcePackUrl.isEmpty() && !download.resourcePackHash.isEmpty()) {
+                                try {
+                                    this.backupFile = File.createTempFile("resources", ".tar.gz");
+                                    this.httpRequest = new HttpGet(download.resourcePackUrl);
+                                    HttpResponse httpResponse5 = closeableHttpClient.execute(this.httpRequest);
+                                    status.totalBytes = Long.parseLong(httpResponse5.getFirstHeader("Content-Length").getValue());
+                                    if (httpResponse5.getStatusLine().getStatusCode() != 200) {
+                                        this.error = true;
+                                        this.httpRequest.abort();
+                                        return;
+                                    }
+
+                                    OutputStream outputStream5 = new FileOutputStream(this.backupFile);
+                                    FileDownload.ResourcePackProgressListener resourcePackProgressListener4 = new FileDownload.ResourcePackProgressListener(
+                                        this.backupFile, status, download
+                                    );
+                                    FileDownload.DownloadCountingOutputStream downloadCountingOutputStream5 = new FileDownload.DownloadCountingOutputStream(
+                                        outputStream5
+                                    );
+                                    downloadCountingOutputStream5.setListener(resourcePackProgressListener4);
+                                    IOUtils.copy(httpResponse5.getEntity().getContent(), downloadCountingOutputStream5);
+                                } catch (Exception exception5) {
+                                    LOGGER.error("Caught exception while downloading: {}", exception5.getMessage());
+                                    this.error = true;
+                                } finally {
+                                    this.httpRequest.releaseConnection();
+                                    if (this.backupFile != null) {
+                                        this.backupFile.delete();
+                                    }
+                                }
+                            } else {
+                                this.finished = true;
+                            }
+                        }
+
+                        if (closeableHttpClient != null) {
+                            try {
+                                closeableHttpClient.close();
+                            } catch (IOException iOException4) {
+                                LOGGER.error("Failed to close Realms download client");
+                            }
+                        }
+                    }
+                }
+            );
+            this.currentThread.setUncaughtExceptionHandler(new RealmsDefaultUncaughtExceptionHandler(LOGGER));
+            this.currentThread.start();
+        }
+    }
+
+    public void cancel() {
+        if (this.httpRequest != null) {
+            this.httpRequest.abort();
+        }
+
+        if (this.backupFile != null) {
+            this.backupFile.delete();
+        }
+
+        this.cancelled = true;
+    }
+
+    public boolean isFinished() {
+        return this.finished;
+    }
+
+    public boolean isError() {
+        return this.error;
+    }
+
+    public boolean isExtracting() {
+        return this.extracting;
+    }
+
+    public static String findAvailableFolderName(String folder) {
+        folder = folder.replaceAll("[\\./\"]", "_");
+
+        for (String string : INVALID_FILE_NAMES) {
+            if (folder.equalsIgnoreCase(string)) {
+                folder = "_" + folder + "_";
+            }
+        }
+
+        return folder;
+    }
+
+    void untarGzipArchive(String name, @Nullable File archive, LevelStorage storage) throws IOException {
+        Pattern pattern = Pattern.compile(".*-([0-9]+)$");
+        int i = 1;
+
+        for (char c : SharedConstants.INVALID_CHARS_LEVEL_NAME) {
+            name = name.replace(c, '_');
+        }
+
+        if (StringUtils.isEmpty(name)) {
+            name = "Realm";
+        }
+
+        name = findAvailableFolderName(name);
+
+        try {
+            for (LevelStorage.LevelSave levelSave : storage.getLevelList()) {
+                String string = levelSave.getRootPath();
+                if (string.toLowerCase(Locale.ROOT).startsWith(name.toLowerCase(Locale.ROOT))) {
+                    Matcher matcher = pattern.matcher(string);
+                    if (matcher.matches()) {
+                        int j = Integer.parseInt(matcher.group(1));
+                        if (j > i) {
+                            i = j;
+                        }
+                    } else {
+                        i++;
+                    }
+                }
+            }
+        } catch (Exception exception) {
+            LOGGER.error("Error getting level list", exception);
+            this.error = true;
+            return;
+        }
+
+        String string3;
+        if (storage.isLevelNameValid(name) && i <= 1) {
+            string3 = name;
+        } else {
+            string3 = name + (i == 1 ? "" : "-" + i);
+            if (!storage.isLevelNameValid(string3)) {
+                boolean bl = false;
+
+                while (!bl) {
+                    string3 = name + (++i == 1 ? "" : "-" + i);
+                    if (storage.isLevelNameValid(string3)) {
+                        bl = true;
+                    }
+                }
+            }
+        }
+
+        TarArchiveInputStream tarArchiveInputStream = null;
+        File file = new File(MinecraftClient.getInstance().runDirectory.getAbsolutePath(), "saves");
+
+        try {
+            file.mkdir();
+            tarArchiveInputStream = new TarArchiveInputStream(new GzipCompressorInputStream(new BufferedInputStream(new FileInputStream(archive))));
+
+            for (TarArchiveEntry tarArchiveEntry = tarArchiveInputStream.getNextTarEntry();
+                tarArchiveEntry != null;
+                tarArchiveEntry = tarArchiveInputStream.getNextTarEntry()
+            ) {
+                File file2 = new File(file, tarArchiveEntry.getName().replace("world", string3));
+                if (tarArchiveEntry.isDirectory()) {
+                    file2.mkdirs();
+                } else {
+                    file2.createNewFile();
+
+                    try (FileOutputStream fileOutputStream = new FileOutputStream(file2)) {
+                        IOUtils.copy(tarArchiveInputStream, fileOutputStream);
+                    }
+                }
+            }
+        } catch (Exception exception3) {
+            LOGGER.error("Error extracting world", exception3);
+            this.error = true;
+        } finally {
+            if (tarArchiveInputStream != null) {
+                tarArchiveInputStream.close();
+            }
+
+            if (archive != null) {
+                archive.delete();
+            }
+
+            try (LevelStorage.Session session3 = storage.createSession(string3)) {
+                session3.removePlayerAndSave(string3);
+            } catch (IOException | NbtException | NbtCrashException exception5) {
+                LOGGER.error("Failed to modify unpacked realms level {}", string3, exception5);
+            } catch (SymlinkValidationException symlinkValidationException3) {
+                LOGGER.warn("{}", symlinkValidationException3.getMessage());
+            }
+
+            this.resourcePackPath = new File(file, string3 + File.separator + "resources.zip");
+        }
+    }
+
+    @Environment(EnvType.CLIENT)
+    static class DownloadCountingOutputStream extends CountingOutputStream {
+        @Nullable
+        private ActionListener listener;
+
+        public DownloadCountingOutputStream(OutputStream stream) {
+            super(stream);
+        }
+
+        public void setListener(ActionListener listener) {
+            this.listener = listener;
+        }
+
+        @Override
+        protected void afterWrite(int n) throws IOException {
+            super.afterWrite(n);
+            if (this.listener != null) {
+                this.listener.actionPerformed(new ActionEvent(this, 0, null));
+            }
+        }
+    }
+
+    @Environment(EnvType.CLIENT)
+    class ProgressListener implements ActionListener {
+        private final String worldName;
+        private final File tempFile;
+        private final LevelStorage levelStorageSource;
+        private final RealmsDownloadLatestWorldScreen.DownloadStatus downloadStatus;
+
+        ProgressListener(
+            final String worldName,
+            final File tempFile,
+            final LevelStorage levelStorageSource,
+            final RealmsDownloadLatestWorldScreen.DownloadStatus downloadStatus
+        ) {
+            this.worldName = worldName;
+            this.tempFile = tempFile;
+            this.levelStorageSource = levelStorageSource;
+            this.downloadStatus = downloadStatus;
+        }
+
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            this.downloadStatus.bytesWritten = ((FileDownload.DownloadCountingOutputStream)e.getSource()).getByteCount();
+            if (this.downloadStatus.bytesWritten >= this.downloadStatus.totalBytes && !FileDownload.this.cancelled && !FileDownload.this.error) {
+                try {
+                    FileDownload.this.extracting = true;
+                    FileDownload.this.untarGzipArchive(this.worldName, this.tempFile, this.levelStorageSource);
+                } catch (IOException iOException) {
+                    FileDownload.LOGGER.error("Error extracting archive", iOException);
+                    FileDownload.this.error = true;
+                }
+            }
+        }
+    }
+
+    @Environment(EnvType.CLIENT)
+    class ResourcePackProgressListener implements ActionListener {
+        private final File tempFile;
+        private final RealmsDownloadLatestWorldScreen.DownloadStatus downloadStatus;
+        private final WorldDownload worldDownload;
+
+        ResourcePackProgressListener(
+            final File tempFile, final RealmsDownloadLatestWorldScreen.DownloadStatus downloadStatus, final WorldDownload worldDownload
+        ) {
+            this.tempFile = tempFile;
+            this.downloadStatus = downloadStatus;
+            this.worldDownload = worldDownload;
+        }
+
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            this.downloadStatus.bytesWritten = ((FileDownload.DownloadCountingOutputStream)e.getSource()).getByteCount();
+            if (this.downloadStatus.bytesWritten >= this.downloadStatus.totalBytes && !FileDownload.this.cancelled) {
+                try {
+                    String string = Hashing.sha1().hashBytes(Files.toByteArray(this.tempFile)).toString();
+                    if (string.equals(this.worldDownload.resourcePackHash)) {
+                        FileUtils.copyFile(this.tempFile, FileDownload.this.resourcePackPath);
+                        FileDownload.this.finished = true;
+                    } else {
+                        FileDownload.LOGGER
+                            .error("Resourcepack had wrong hash (expected {}, found {}). Deleting it.", this.worldDownload.resourcePackHash, string);
+                        FileUtils.deleteQuietly(this.tempFile);
+                        FileDownload.this.error = true;
+                    }
+                } catch (IOException iOException) {
+                    FileDownload.LOGGER.error("Error copying resourcepack file: {}", iOException.getMessage());
+                    FileDownload.this.error = true;
+                }
+            }
+        }
+    }
+}
+

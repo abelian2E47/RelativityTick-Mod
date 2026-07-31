@@ -18,6 +18,7 @@ public class ClientRegion {
     private double rate;
     private double regionTPS;
     private double accumulator;
+    private long virtualTime;
     private int pendingSteps;
 
     public ClientRegion(RegionSyncPayload payload) {
@@ -30,10 +31,19 @@ public class ClientRegion {
     public void updateRegionState(RegionSyncPayload payload) {
         this.regionState = payload.state();
         this.rate = payload.rate();
+        this.virtualTime = payload.virtualTime();
         replaceChunks(payload.chunkPositions());
         if (!isRunning()) {
             this.accumulator = 0.0;
         }
+    }
+
+    public void updateVirtualTime(long virtualTime) {
+        this.virtualTime = virtualTime;
+    }
+
+    public long nextVirtualTime() {
+        return ++virtualTime;
     }
 
     public void updateRegionTPS(RegionTPSPayload payload){

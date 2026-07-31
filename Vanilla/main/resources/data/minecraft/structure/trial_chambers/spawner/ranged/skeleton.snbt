@@ -1,0 +1,32 @@
+{
+    size: [3, 2, 3],
+    data: [
+        {pos: [0, 0, 0], state: "minecraft:bone_block{axis:y}"},
+        {pos: [0, 0, 1], state: "minecraft:waxed_chiseled_copper"},
+        {pos: [0, 0, 2], state: "minecraft:bone_block{axis:y}"},
+        {pos: [1, 0, 0], state: "minecraft:waxed_chiseled_copper"},
+        {pos: [1, 0, 1], state: "minecraft:waxed_copper_block"},
+        {pos: [1, 0, 2], state: "minecraft:waxed_chiseled_copper"},
+        {pos: [2, 0, 0], state: "minecraft:bone_block{axis:y}"},
+        {pos: [2, 0, 1], state: "minecraft:waxed_chiseled_copper"},
+        {pos: [2, 0, 2], state: "minecraft:bone_block{axis:y}"},
+        {pos: [0, 1, 0], state: "minecraft:air"},
+        {pos: [0, 1, 1], state: "minecraft:air"},
+        {pos: [0, 1, 2], state: "minecraft:air"},
+        {pos: [1, 1, 2], state: "minecraft:air"},
+        {pos: [2, 1, 0], state: "minecraft:air"},
+        {pos: [2, 1, 1], state: "minecraft:air"},
+        {pos: [2, 1, 2], state: "minecraft:air"},
+        {pos: [1, 1, 0], state: "minecraft:jigsaw{orientation:up_north}", nbt: {final_state: "minecraft:air", id: "minecraft:jigsaw", joint: "aligned", name: "minecraft:spawner", placement_priority: 0, pool: "minecraft:empty", selection_priority: 0, target: "minecraft:empty"}},
+        {pos: [1, 1, 1], state: "minecraft:trial_spawner{ominous:false,trial_spawner_state:waiting_for_players}", nbt: {id: "minecraft:trial_spawner", normal_config: "minecraft:trial_chamber/ranged/skeleton/normal", ominous_config: "minecraft:trial_chamber/ranged/skeleton/ominous"}}
+    ],
+    entities: [],
+    palette: [
+        "minecraft:bone_block{axis:y}",
+        "minecraft:waxed_chiseled_copper",
+        "minecraft:waxed_copper_block",
+        "minecraft:air",
+        "minecraft:jigsaw{orientation:up_north}",
+        "minecraft:trial_spawner{ominous:false,trial_spawner_state:waiting_for_players}"
+    ]
+}

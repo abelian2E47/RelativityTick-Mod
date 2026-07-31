@@ -55,23 +55,19 @@ public class RegionsManager {
         Region region = ID_TO_REGION.get(id);
         if (region == null) {
             createRegion(id, Set.of(chunkPos), world);
+            return;
         }
-
 
         String currentId = getRegionId(key(world, chunkPos));
         if (id.equals(currentId)) {
-            if (region != null) {
-                syncRegion(id, region);
-            }
-
+            syncRegion(id, region);
+            return;
         }
 
         removeChunkFromCurrentRegion(chunkPos, world);
-        DimensionChunkKey key = key(world, chunkPos);
-        CHUNK_TO_REGION.put(key, region);
-        if (region != null) {
-            syncRegion(id, region);
-        }
+        region.addChunk(chunkPos, world);
+        CHUNK_TO_REGION.put(key(world, chunkPos), region);
+        syncRegion(id, region);
         savePersistentState();
     }
 
@@ -347,7 +343,7 @@ public class RegionsManager {
 
     private static RegionSyncPayload createSyncPayload(String id, Region region) {
         return new RegionSyncPayload(id, region.getDimensionId(), region.getChunkPositions(),
-                region.getState(), region.getRate());
+                region.getState(), region.getRate(), region.getVirtualTime());
     }
 
     private static DimensionChunkKey key(ServerWorld world, long chunkPos) {

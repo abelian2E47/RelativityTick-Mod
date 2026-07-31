@@ -1,0 +1,26 @@
+package net.minecraft.client.render.model.json;
+
+import com.google.common.collect.Streams;
+import java.util.function.Predicate;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
+import net.minecraft.block.Block;
+import net.minecraft.block.BlockState;
+import net.minecraft.state.StateManager;
+import net.minecraft.util.Util;
+
+@Environment(EnvType.CLIENT)
+public class AndMultipartModelSelector implements MultipartModelSelector {
+    public static final String KEY = "AND";
+    private final Iterable<? extends MultipartModelSelector> selectors;
+
+    public AndMultipartModelSelector(Iterable<? extends MultipartModelSelector> selectors) {
+        this.selectors = selectors;
+    }
+
+    @Override
+    public Predicate<BlockState> getPredicate(StateManager<Block, BlockState> stateFactory) {
+        return Util.allOf(Streams.stream(this.selectors).map(selector -> selector.getPredicate(stateFactory)).toList());
+    }
+}
+

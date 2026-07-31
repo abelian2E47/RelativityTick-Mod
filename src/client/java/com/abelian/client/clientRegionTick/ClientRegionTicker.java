@@ -8,6 +8,7 @@ import com.abelian.network.EntityStateRecord;
 import com.abelian.network.PassengerSyncPayload;
 import com.abelian.network.RegionEntitySyncPayload;
 import com.abelian.network.RegionStepPayload;
+import com.abelian.network.RegionTimePayload;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.client.world.ClientWorld;
@@ -27,7 +28,6 @@ import static com.abelian.client.render.EntityInterpolationManager.ENTITY_INTERP
 
 public class ClientRegionTicker {
     private static final List<Entity> ENTITY_TICK_BUFFER = new ArrayList<>(128);
-    private static long nextRegionTickTime = Long.MIN_VALUE;
 
     public static void clearRegion(String regionId) {
         ENTITY_INTERPOLATIONS.entrySet().removeIf(entry -> entry.getValue().regionId().equals(regionId));
@@ -36,7 +36,6 @@ public class ClientRegionTicker {
     public static void clear() {
         ENTITY_TICK_BUFFER.clear();
         ENTITY_INTERPOLATIONS.clear();
-        nextRegionTickTime = Long.MIN_VALUE;
     }
 
     public static void register(){
@@ -55,6 +54,13 @@ public class ClientRegionTicker {
             if (world == null) return;
 
             applyEntityStates(world, payload.entities());
+        }));
+
+        ClientPlayNetworking.registerGlobalReceiver(RegionTimePayload.ID, (payload, context) -> context.client().execute(() -> {
+            ClientRegion region = ClientRegionManager.getRegion(payload.regionId());
+            if (region != null) {
+                region.updateVirtualTime(payload.virtualTime());
+            }
         }));
 
         //乘客状态同步
@@ -76,7 +82,7 @@ public class ClientRegionTicker {
                     int stepsToTake = region.accumulateSteps();
                     stepsToTake = region.consumePendingSteps(stepsToTake);
                     if (stepsToTake > 0) {
-                        tickRegion(world, region.getId(), region.getChunkPositions(), stepsToTake);
+                        tickRegion(world, region, region.getChunkPositions(), stepsToTake);
                         region.recordStep();
                     }
                     continue;
@@ -85,7 +91,7 @@ public class ClientRegionTicker {
                 if (region.isRunning()) {
                     int stepsToTake = region.accumulateSteps();
                     if (stepsToTake > 0) {
-                        tickRegion(world, region.getId(), region.getChunkPositions(), stepsToTake);
+                        tickRegion(world, region, region.getChunkPositions(), stepsToTake);
                         region.recordStep();
                     }
                 }
@@ -118,12 +124,12 @@ public class ClientRegionTicker {
 
     }
 
-    private static void tickRegion(ClientWorld world, String regionId, Set<Long> chunkSet, int stepsTaken) {
+    private static void tickRegion(ClientWorld world, ClientRegion region, Set<Long> chunkSet, int stepsTaken) {
         Map<Integer, Vec3d> previousPositions = new HashMap<>();
         Map<Integer, Entity> tickedEntities = new HashMap<>();
 
         for (int i = 0; i < stepsTaken; i++) {
-            RegionTickContext.begin(world, nextRegionTickTime++);
+            RegionTickContext.begin(world, region.nextVirtualTime());
 
             ClientTickBridge.setCustomTickInProgress(true);
             try {
@@ -148,10 +154,11 @@ public class ClientRegionTicker {
             Entity entity = entry.getValue();
             Vec3d previous = previousPositions.get(entry.getKey());
             if (previous != null && !entity.isRemoved()) {
-                ENTITY_INTERPOLATIONS.put(entry.getKey(), new EntityInterpolationManager.EntityRenderInterpolation(regionId, previous, entity.getPos()));
+                ENTITY_INTERPOLATIONS.put(entry.getKey(), new EntityInterpolationManager.EntityRenderInterpolation(region.getId(), previous, entity.getPos()));
             }
         }
     }
+
 
     private static void collectTickingEntities(ClientWorld world, Set<Long> chunkSet) {
         ENTITY_TICK_BUFFER.clear();

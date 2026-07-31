@@ -1,0 +1,125 @@
+package net.minecraft.block;
+
+import com.mojang.serialization.MapCodec;
+import javax.annotation.Nullable;
+import net.minecraft.advancement.criterion.Criteria;
+import net.minecraft.block.entity.SkullBlockEntity;
+import net.minecraft.block.pattern.BlockPattern;
+import net.minecraft.block.pattern.BlockPatternBuilder;
+import net.minecraft.block.pattern.CachedBlockPosition;
+import net.minecraft.entity.EntityType;
+import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.SpawnReason;
+import net.minecraft.entity.boss.WitherEntity;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.Items;
+import net.minecraft.predicate.block.BlockStatePredicate;
+import net.minecraft.registry.tag.BlockTags;
+import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Direction;
+import net.minecraft.world.Difficulty;
+import net.minecraft.world.World;
+
+public class WitherSkullBlock extends SkullBlock {
+    public static final MapCodec<WitherSkullBlock> CODEC = createCodec(WitherSkullBlock::new);
+    @Nullable
+    private static BlockPattern witherBossPattern;
+    @Nullable
+    private static BlockPattern witherDispenserPattern;
+
+    @Override
+    public MapCodec<WitherSkullBlock> getCodec() {
+        return CODEC;
+    }
+
+    protected WitherSkullBlock(AbstractBlock.Settings settings) {
+        super(SkullBlock.Type.WITHER_SKELETON, settings);
+    }
+
+    @Override
+    public void onPlaced(World world, BlockPos pos, BlockState state, @Nullable LivingEntity placer, ItemStack itemStack) {
+        onPlaced(world, pos);
+    }
+
+    public static void onPlaced(World world, BlockPos pos) {
+        if (world.getBlockEntity(pos) instanceof SkullBlockEntity skullBlockEntity) {
+            onPlaced(world, pos, skullBlockEntity);
+        }
+    }
+
+    public static void onPlaced(World world, BlockPos pos, SkullBlockEntity blockEntity) {
+        if (!world.isClient) {
+            BlockState blockState = blockEntity.getCachedState();
+            boolean bl = blockState.isOf(Blocks.WITHER_SKELETON_SKULL) || blockState.isOf(Blocks.WITHER_SKELETON_WALL_SKULL);
+            if (bl && pos.getY() >= world.getBottomY() && world.getDifficulty() != Difficulty.PEACEFUL) {
+                BlockPattern.Result result = getWitherBossPattern().searchAround(world, pos);
+                if (result != null) {
+                    WitherEntity witherEntity = EntityType.WITHER.create(world, SpawnReason.TRIGGERED);
+                    if (witherEntity != null) {
+                        CarvedPumpkinBlock.breakPatternBlocks(world, result);
+                        BlockPos blockPos = result.translate(1, 2, 0).getBlockPos();
+                        witherEntity.refreshPositionAndAngles(
+                            blockPos.getX() + 0.5,
+                            blockPos.getY() + 0.55,
+                            blockPos.getZ() + 0.5,
+                            result.getForwards().getAxis() == Direction.Axis.X ? 0.0F : 90.0F,
+                            0.0F
+                        );
+                        witherEntity.bodyYaw = result.getForwards().getAxis() == Direction.Axis.X ? 0.0F : 90.0F;
+                        witherEntity.onSummoned();
+
+                        for (ServerPlayerEntity serverPlayerEntity : world.getNonSpectatingEntities(
+                            ServerPlayerEntity.class, witherEntity.getBoundingBox().expand(50.0)
+                        )) {
+                            Criteria.SUMMONED_ENTITY.trigger(serverPlayerEntity, witherEntity);
+                        }
+
+                        world.spawnEntity(witherEntity);
+                        CarvedPumpkinBlock.updatePatternBlocks(world, result);
+                    }
+                }
+            }
+        }
+    }
+
+    public static boolean canDispense(World world, BlockPos pos, ItemStack stack) {
+        return stack.isOf(Items.WITHER_SKELETON_SKULL)
+                && pos.getY() >= world.getBottomY() + 2
+                && world.getDifficulty() != Difficulty.PEACEFUL
+                && !world.isClient
+            ? getWitherDispenserPattern().searchAround(world, pos) != null
+            : false;
+    }
+
+    private static BlockPattern getWitherBossPattern() {
+        if (witherBossPattern == null) {
+            witherBossPattern = BlockPatternBuilder.start()
+                .aisle("^^^", "###", "~#~")
+                .where('#', pos -> pos.getBlockState().isIn(BlockTags.WITHER_SUMMON_BASE_BLOCKS))
+                .where(
+                    '^',
+                    CachedBlockPosition.matchesBlockState(
+                        BlockStatePredicate.forBlock(Blocks.WITHER_SKELETON_SKULL).or(BlockStatePredicate.forBlock(Blocks.WITHER_SKELETON_WALL_SKULL))
+                    )
+                )
+                .where('~', pos -> pos.getBlockState().isAir())
+                .build();
+        }
+
+        return witherBossPattern;
+    }
+
+    private static BlockPattern getWitherDispenserPattern() {
+        if (witherDispenserPattern == null) {
+            witherDispenserPattern = BlockPatternBuilder.start()
+                .aisle("   ", "###", "~#~")
+                .where('#', pos -> pos.getBlockState().isIn(BlockTags.WITHER_SUMMON_BASE_BLOCKS))
+                .where('~', pos -> pos.getBlockState().isAir())
+                .build();
+        }
+
+        return witherDispenserPattern;
+    }
+}
+

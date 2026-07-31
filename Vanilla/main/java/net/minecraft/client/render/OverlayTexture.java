@@ -1,0 +1,72 @@
+package net.minecraft.client.render;
+
+import com.mojang.blaze3d.platform.GlConst;
+import com.mojang.blaze3d.systems.RenderSystem;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
+import net.minecraft.client.texture.NativeImage;
+import net.minecraft.client.texture.NativeImageBackedTexture;
+import net.minecraft.util.Colors;
+import net.minecraft.util.math.ColorHelper;
+
+@Environment(EnvType.CLIENT)
+public class OverlayTexture implements AutoCloseable {
+    private static final int field_32956 = 16;
+    public static final int field_32953 = 0;
+    public static final int field_32954 = 3;
+    public static final int field_32955 = 10;
+    public static final int DEFAULT_UV = packUv(0, 10);
+    private final NativeImageBackedTexture texture = new NativeImageBackedTexture(16, 16, false);
+
+    public OverlayTexture() {
+        NativeImage nativeImage = this.texture.getImage();
+
+        for (int i = 0; i < 16; i++) {
+            for (int j = 0; j < 16; j++) {
+                if (i < 8) {
+                    nativeImage.setColorArgb(j, i, -1291911168);
+                } else {
+                    int k = (int)((1.0F - j / 15.0F * 0.75F) * 255.0F);
+                    nativeImage.setColorArgb(j, i, ColorHelper.withAlpha(k, Colors.WHITE));
+                }
+            }
+        }
+
+        RenderSystem.activeTexture(GlConst.GL_TEXTURE1);
+        this.texture.bindTexture();
+        this.texture.setFilter(false, false);
+        this.texture.setClamp(true);
+        nativeImage.upload(0, 0, 0, 0, 0, nativeImage.getWidth(), nativeImage.getHeight(), false);
+        RenderSystem.activeTexture(GlConst.GL_TEXTURE0);
+    }
+
+    @Override
+    public void close() {
+        this.texture.close();
+    }
+
+    public void setupOverlayColor() {
+        RenderSystem.setupOverlayColor(this.texture.getGlId(), 16);
+    }
+
+    public static int getU(float whiteOverlayProgress) {
+        return (int)(whiteOverlayProgress * 15.0F);
+    }
+
+    public static int getV(boolean hurt) {
+        return hurt ? 3 : 10;
+    }
+
+    public static int packUv(int u, int v) {
+        return u | v << 16;
+    }
+
+    public static int getUv(float whiteOverlayProgress, boolean hurt) {
+        return packUv(getU(whiteOverlayProgress), getV(hurt));
+    }
+
+    public void teardownOverlayColor() {
+        RenderSystem.teardownOverlayColor();
+    }
+}
+

@@ -6,7 +6,10 @@ import net.minecraft.world.tick.OrderedTick;
 import net.minecraft.world.tick.WorldTickScheduler;
 import net.minecraft.util.math.BlockPos;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.PriorityQueue;
+import java.util.Queue;
 import java.util.function.BiConsumer;
 
 public class ChunkTickManager {
@@ -66,21 +69,63 @@ public class ChunkTickManager {
     }
 
 
-    public <T> void tickScheduledTicks(WorldTickScheduler<T> worldScheduler, BiConsumer<BlockPos, T> ticker, long virtualTrigger) {
+    private static final int MAX_TICKS_PER_SCHEDULER = 65536;
+
+    public static <T> void tickScheduledTicks(
+            List<ChunkTickManager> chunks,
+            WorldTickScheduler<T> worldScheduler,
+            BiConsumer<BlockPos, T> ticker,
+            long virtualTrigger
+    ) {
         WorldTickSchedulerAccessor<T> worldAccess = (WorldTickSchedulerAccessor<T>) worldScheduler;
-        ChunkTickScheduler<T> chunkScheduler = worldAccess.getChunkTickSchedulers().get(this.chunkPosLong);
+        Queue<ChunkTickScheduler<T>> tickableSchedulers = new PriorityQueue<>(
+                (first, second) -> OrderedTick.BASIC_COMPARATOR.compare(
+                        first.peekNextTick(), second.peekNextTick()));
 
-        if (chunkScheduler == null) return;
+        for (ChunkTickManager chunk : chunks) {
+            ChunkTickScheduler<T> scheduler = worldAccess.getChunkTickSchedulers().get(chunk.chunkPosLong);
+            if (scheduler == null) continue;
 
-        while (true) {
-            OrderedTick<T> nextTick = chunkScheduler.peekNextTick();
-            if (nextTick == null || nextTick.triggerTick() > virtualTrigger) break;
-
-            OrderedTick<T> tickToRun = chunkScheduler.pollNextTick();
-            if (tickToRun != null) {
-                ticker.accept(tickToRun.pos(), tickToRun.type());
+            OrderedTick<T> nextTick = scheduler.peekNextTick();
+            if (nextTick != null && nextTick.triggerTick() <= virtualTrigger) {
+                tickableSchedulers.add(scheduler);
             }
         }
+
+        List<OrderedTick<T>> ticksToRun = new ArrayList<>();
+        while (ticksToRun.size() < MAX_TICKS_PER_SCHEDULER && !tickableSchedulers.isEmpty()) {
+            ChunkTickScheduler<T> scheduler = tickableSchedulers.poll();
+            OrderedTick<T> tick = scheduler.pollNextTick();
+            if (tick == null) continue;
+            ticksToRun.add(tick);
+
+            OrderedTick<T> competingTick = peekNextTick(tickableSchedulers);
+            while (ticksToRun.size() < MAX_TICKS_PER_SCHEDULER) {
+                OrderedTick<T> nextTick = scheduler.peekNextTick();
+                if (nextTick == null || nextTick.triggerTick() > virtualTrigger
+                        || competingTick != null
+                        && OrderedTick.BASIC_COMPARATOR.compare(nextTick, competingTick) > 0) {
+                    break;
+                }
+
+                ticksToRun.add(scheduler.pollNextTick());
+            }
+
+            OrderedTick<T> nextTick = scheduler.peekNextTick();
+            if (ticksToRun.size() < MAX_TICKS_PER_SCHEDULER
+                    && nextTick != null && nextTick.triggerTick() <= virtualTrigger) {
+                tickableSchedulers.add(scheduler);
+            }
+        }
+
+        for (OrderedTick<T> tick : ticksToRun) {
+            ticker.accept(tick.pos(), tick.type());
+        }
+    }
+
+    private static <T> OrderedTick<T> peekNextTick(Queue<ChunkTickScheduler<T>> schedulers) {
+        ChunkTickScheduler<T> scheduler = schedulers.peek();
+        return scheduler == null ? null : scheduler.peekNextTick();
     }
 
 }

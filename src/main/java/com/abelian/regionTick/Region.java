@@ -166,6 +166,10 @@ public class Region {
         return currentWorldTime;
     }
 
+    public long getVirtualTime() {
+        return freezeStartTime + stepped;
+    }
+
     public void tickRegion(ServerWorld world, WorldTickScheduler<Block> blockScheduler, BiConsumer<BlockPos, Block> blockTicker, WorldTickScheduler<Fluid> fluidScheduler, BiConsumer<BlockPos, Fluid> fluidTicker) {
         if (!isControlled()) return;
 
@@ -268,10 +272,8 @@ public class Region {
 
 
     private void tickScheduledTicks(WorldTickScheduler<Block> blockScheduler, BiConsumer<BlockPos, Block> blockTicker, WorldTickScheduler<Fluid> fluidScheduler, BiConsumer<BlockPos, Fluid> fluidTicker, long virtualTime) {
-        for (ChunkTickManager chunk : region) {
-            chunk.tickScheduledTicks(blockScheduler, blockTicker, virtualTime);
-            chunk.tickScheduledTicks(fluidScheduler, fluidTicker, virtualTime);
-        }
+        ChunkTickManager.tickScheduledTicks(region, blockScheduler, blockTicker, virtualTime);
+        ChunkTickManager.tickScheduledTicks(region, fluidScheduler, fluidTicker, virtualTime);
     }
 
     private void tickChunkWorld(ServerWorld world) {

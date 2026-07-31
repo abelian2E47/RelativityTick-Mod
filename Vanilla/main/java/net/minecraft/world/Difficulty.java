@@ -1,0 +1,55 @@
+package net.minecraft.world;
+
+import java.util.function.IntFunction;
+import javax.annotation.Nullable;
+import net.minecraft.text.Text;
+import net.minecraft.util.StringIdentifiable;
+import net.minecraft.util.function.ValueLists;
+
+public enum Difficulty implements StringIdentifiable {
+    PEACEFUL(0, "peaceful"),
+    EASY(1, "easy"),
+    NORMAL(2, "normal"),
+    HARD(3, "hard");
+
+    public static final StringIdentifiable.EnumCodec<Difficulty> CODEC = StringIdentifiable.createCodec(Difficulty::values);
+    private static final IntFunction<Difficulty> BY_ID = ValueLists.createIdToValueFunction(Difficulty::getId, values(), ValueLists.OutOfBoundsHandling.WRAP);
+    private final int id;
+    private final String name;
+
+    Difficulty(final int id, final String name) {
+        this.id = id;
+        this.name = name;
+    }
+
+    public int getId() {
+        return this.id;
+    }
+
+    public Text getTranslatableName() {
+        return Text.translatable("options.difficulty." + this.name);
+    }
+
+    public Text getInfo() {
+        return Text.translatable("options.difficulty." + this.name + ".info");
+    }
+
+    public static Difficulty byId(int id) {
+        return BY_ID.apply(id);
+    }
+
+    @Nullable
+    public static Difficulty byName(String name) {
+        return CODEC.byId(name);
+    }
+
+    public String getName() {
+        return this.name;
+    }
+
+    @Override
+    public String asString() {
+        return this.name;
+    }
+}
+

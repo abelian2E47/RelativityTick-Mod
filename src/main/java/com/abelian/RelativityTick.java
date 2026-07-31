@@ -37,6 +37,7 @@ public class RelativityTick implements ModInitializer {
 	public static final Identifier REGION_STEP_PACKET_ID = Identifier.of(MOD_ID, "region_step_packet");
 	public static final Identifier REGION_ENTITY_SYNC_PACKET_ID = Identifier.of(MOD_ID, "region_entity_sync_packet");
     public static final Identifier PASSENGER_SYNC_PACKET_ID = Identifier.of(MOD_ID, "passenger_sync_packet");
+    public static final Identifier REGION_TIME_PACKET_ID = Identifier.of(MOD_ID, "region_time_packet");
 
     private static final double REGION_TPS_RELATIVE_SEND_THRESHOLD = 0.01;
     private static final int REGION_TPS_STABLE_SEND_GT = 20;
@@ -47,12 +48,13 @@ public class RelativityTick implements ModInitializer {
 	public void onInitialize() {
 		RelativityTickConfig.initialize();
 		CommandRegistrationCallback.EVENT.register(ServerCommands::register);
-		PayloadTypeRegistry.playS2C().register(RegionSyncPayload.ID, RegionSyncPayload.CODEC);
-		PayloadTypeRegistry.playC2S().register(SelectionOperationPayload.ID, SelectionOperationPayload.CODEC);
-		PayloadTypeRegistry.playS2C().register(RegionTPSPayload.ID, RegionTPSPayload.CODEC);
-		PayloadTypeRegistry.playS2C().register(RegionStepPayload.ID, RegionStepPayload.CODEC);
-		PayloadTypeRegistry.playS2C().register(RegionEntitySyncPayload.ID, RegionEntitySyncPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(RegionSyncPayload.ID, RegionSyncPayload.CODEC);
+        PayloadTypeRegistry.playC2S().register(SelectionOperationPayload.ID, SelectionOperationPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(RegionTPSPayload.ID, RegionTPSPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(RegionStepPayload.ID, RegionStepPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(RegionEntitySyncPayload.ID, RegionEntitySyncPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(PassengerSyncPayload.ID, PassengerSyncPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(RegionTimePayload.ID, RegionTimePayload.CODEC);
 
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
             RelativityTickUtils.set(server);
@@ -110,9 +112,12 @@ public class RelativityTick implements ModInitializer {
                     }
 
                     region.setPendingSteps(remaining);
+                    if (result.stepsTaken() > 0) {
+                        sendRegionTime(id, region, world);
+                    }
                     if (result.stepsTaken() > 0 && remaining == 0) {
                         RegionSyncPayload syncPayload = new RegionSyncPayload(id, region.getDimensionId(), region.getChunkPositions(),
-                                region.getState(), region.getRate());
+                                region.getState(), region.getRate(), region.getVirtualTime());
                         RegionEntitySyncPayload entityPayload = new RegionEntitySyncPayload(id, new ArrayList<>(entityStates.values()));
                         for (ServerPlayerEntity player : world.getPlayers()) {
                             ServerPlayNetworking.send(player, syncPayload);
@@ -139,6 +144,9 @@ public class RelativityTick implements ModInitializer {
                     region.recordTickDuration(0L);
                 }
                 region.recordGlobalTickSteps(result.stepsTaken());
+                if (result.stepsTaken() > 0) {
+                    sendRegionTime(id, region, world);
+                }
             }
         });
 
@@ -176,11 +184,18 @@ public class RelativityTick implements ModInitializer {
     }
 
     private static void sendRegionTpsAndEntities(String id, Region region, ServerWorld world, double currentTPS) {
-        RegionTPSPayload tpsPayload = new RegionTPSPayload(id, region.getRegionTickDuration(), currentTPS);
+        RegionTPSPayload tpsPayload = new RegionTPSPayload(id, region.getRegionTickDuration(), currentTPS, region.getVirtualTime());
         RegionEntitySyncPayload entityPayload = new RegionEntitySyncPayload(id, new ArrayList<>(region.collectEntityStates(world)));
         for (ServerPlayerEntity player : world.getPlayers()) {
             ServerPlayNetworking.send(player, tpsPayload);
             ServerPlayNetworking.send(player, entityPayload);
+        }
+    }
+
+    private static void sendRegionTime(String id, Region region, ServerWorld world) {
+        RegionTimePayload payload = new RegionTimePayload(id, region.getVirtualTime());
+        for (ServerPlayerEntity player : world.getPlayers()) {
+            ServerPlayNetworking.send(player, payload);
         }
     }
 
@@ -189,8 +204,8 @@ public class RelativityTick implements ModInitializer {
         long regionBudgetNano = (long)(region.getTickDurationLimit() * 1_000_000L);
         WorldTickScheduler<Block> blockScheduler = world.getBlockTickScheduler();
         WorldTickScheduler<Fluid> fluidScheduler = world.getFluidTickScheduler();
-        BiConsumer<BlockPos, Block> blockTicker = (pos, block) -> world.getBlockState(pos).scheduledTick(world, pos, world.getRandom());
-        BiConsumer<BlockPos, Fluid> fluidTicker = (pos, fluid) -> world.getFluidState(pos).onScheduledTick(world, pos, fluid.getDefaultState().getBlockState());
+        BiConsumer<BlockPos, Block> blockTicker = (pos, block) -> RelativityTickUtils.tickBlock(world, pos, block);
+        BiConsumer<BlockPos, Fluid> fluidTicker = (pos, fluid) -> RelativityTickUtils.tickFluid(world, pos, fluid);
 
         double[] accumulator = {region.getAccumulator()};
         int stepsToTake = RelativityTickUtils.accumulateSteps(region.getRate(), accumulator);

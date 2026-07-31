@@ -1,7 +1,12 @@
 package com.abelian;
 
+import net.minecraft.block.Block;
+import net.minecraft.block.BlockState;
+import net.minecraft.fluid.Fluid;
+import net.minecraft.fluid.FluidState;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.util.math.BlockPos;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -26,6 +31,21 @@ public class RelativityTickUtils {
         BigDecimal bd = new BigDecimal(String.valueOf(value));
         bd = bd.setScale(accuracy, RoundingMode.DOWN);
         return bd.doubleValue();
+    }
+
+    public static void tickBlock(ServerWorld world, BlockPos pos, Block block) {
+        BlockState state = world.getBlockState(pos);
+        if (state.isOf(block)) {
+            state.scheduledTick(world, pos, world.getRandom());
+        }
+    }
+
+    public static void tickFluid(ServerWorld world, BlockPos pos, Fluid fluid) {
+        BlockState blockState = world.getBlockState(pos);
+        FluidState fluidState = blockState.getFluidState();
+        if (fluidState.isOf(fluid)) {
+            fluidState.onScheduledTick(world, pos, blockState);
+        }
     }
 
     public static int accumulateSteps(double rate, double[] accumulator) {

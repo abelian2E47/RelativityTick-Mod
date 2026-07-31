@@ -289,8 +289,8 @@ public class ServerCommands {
             return 1;
         }
 
-        BiConsumer<BlockPos, Block> blockTicker = (pos, block) -> rcc.world.getBlockState(pos).scheduledTick(rcc.world, pos, rcc.world.getRandom());
-        BiConsumer<BlockPos, Fluid> fluidTicker = (pos, fluid) -> rcc.world.getFluidState(pos).onScheduledTick(rcc.world, pos, fluid.getDefaultState().getBlockState());
+        BiConsumer<BlockPos, Block> blockTicker = (pos, block) -> RelativityTickUtils.tickBlock(rcc.world, pos, block);
+        BiConsumer<BlockPos, Fluid> fluidTicker = (pos, fluid) -> RelativityTickUtils.tickFluid(rcc.world, pos, fluid);
 
         Map<Integer, EntityStateRecord> entityStates = new LinkedHashMap<>();
         com.abelian.ServerTickBridge.beginRegionTickBatch();
@@ -305,6 +305,7 @@ public class ServerCommands {
         syncRegionState(rcc);
         sendStepPayload(rcc, steps);
         sendEntitySyncPayload(rcc, new ArrayList<>(entityStates.values()));
+        ServerPlayNetworking.send(rcc.source.getPlayer(), new RegionTimePayload(rcc.id, rcc.manager.getVirtualTime()));
         return 1;
     }
 
@@ -351,8 +352,7 @@ public class ServerCommands {
         if (rcc.isInvalid()) return 0;
         if (rcc.manager.isControlled()) release(rcc);
         RegionsManager.removeRegion(rcc.id);
-        RegionSyncPayload payload = new RegionSyncPayload(rcc.id, rcc.manager.getDimensionId(), java.util.Collections.emptySet(), Region.RegionState.RELEASED, 20);
-        sendToWorldPlayers(rcc.world, payload);
+        RegionSyncPayload payload = new RegionSyncPayload(rcc.id, rcc.manager.getDimensionId(), java.util.Collections.emptySet(), Region.RegionState.RELEASED, 20, rcc.manager.getVirtualTime());
 
         rcc.source.sendFeedback(() -> Text.translatable("relativitytick.command.region.removed", Text.literal(rcc.id).formatted(Formatting.GOLD)), false);
         return 1;
@@ -436,12 +436,12 @@ public class ServerCommands {
 
     private static void syncRegionState(RegionCommandContext rcc) {
         RegionSyncPayload payload = new RegionSyncPayload(rcc.id, rcc.manager.getDimensionId(), rcc.manager.getChunkPositions(),
-                rcc.manager.getState(), rcc.manager.getRate());
+                rcc.manager.getState(), rcc.manager.getRate(), rcc.manager.getVirtualTime());
         sendToWorldPlayers(rcc.world, payload);
     }
 
     private static void syncRegionTPS(RegionCommandContext rcc) {
-        RegionTPSPayload payload = new RegionTPSPayload(rcc.id, rcc.manager.getRegionTickDuration(), rcc.manager.getTPS());
+        RegionTPSPayload payload = new RegionTPSPayload(rcc.id, rcc.manager.getRegionTickDuration(), rcc.manager.getTPS(), rcc.manager.getVirtualTime());
         sendToWorldPlayers(rcc.world, payload);
     }
 

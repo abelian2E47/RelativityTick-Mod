@@ -1,0 +1,88 @@
+package net.minecraft.state.property;
+
+import it.unimi.dsi.fastutil.ints.IntImmutableList;
+import java.util.List;
+import java.util.Optional;
+import java.util.stream.IntStream;
+
+/**
+ * Represents a property that has integer values.
+ * 
+ * <p>See {@link net.minecraft.state.property.Properties} for example
+ * usages.
+ */
+public final class IntProperty extends Property<Integer> {
+    private final IntImmutableList values;
+    private final int min;
+    private final int max;
+
+    private IntProperty(String name, int min, int max) {
+        super(name, Integer.class);
+        if (min < 0) {
+            throw new IllegalArgumentException("Min value of " + name + " must be 0 or greater");
+        }
+
+        if (max <= min) {
+            throw new IllegalArgumentException("Max value of " + name + " must be greater than min (" + min + ")");
+        }
+
+        this.min = min;
+        this.max = max;
+        this.values = IntImmutableList.toList(IntStream.range(min, max + 1));
+    }
+
+    @Override
+    public List<Integer> getValues() {
+        return this.values;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        } else {
+            return o instanceof IntProperty intProperty && super.equals(o) ? this.values.equals(intProperty.values) : false;
+        }
+    }
+
+    @Override
+    public int computeHashCode() {
+        return 31 * super.computeHashCode() + this.values.hashCode();
+    }
+
+    /**
+     * Creates an integer property.
+     * 
+     * <p>Note that this method computes all possible values.
+     * 
+     * @throws IllegalArgumentException if {@code 0 <= min < max} is not
+     * satisfied
+     * 
+     * @param name the name of the property; see {@linkplain Property#name the note on the
+     * name}
+     * @param min the minimum value the property contains
+     * @param max the maximum value the property contains
+     */
+    public static IntProperty of(String name, int min, int max) {
+        return new IntProperty(name, min, max);
+    }
+
+    @Override
+    public Optional<Integer> parse(String name) {
+        try {
+            int i = Integer.parseInt(name);
+            return i >= this.min && i <= this.max ? Optional.of(i) : Optional.empty();
+        } catch (NumberFormatException numberFormatException) {
+            return Optional.empty();
+        }
+    }
+
+    public String name(Integer integer) {
+        return integer.toString();
+    }
+
+    public int ordinal(Integer integer) {
+        return integer <= this.max ? integer - this.min : -1;
+    }
+}
+

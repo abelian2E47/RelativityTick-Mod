@@ -42,6 +42,7 @@ public class ClientRegionManager {
         ClientPlayNetworking.registerGlobalReceiver(RegionTPSPayload.ID, (payload, context) -> context.client().execute(() -> {
             ClientRegion region = REGIONS.get(payload.regionID());
             if (region != null) {
+                region.updateVirtualTime(payload.virtualTime());
                 region.updateRegionTPS(payload);
             }
         }));

@@ -1,0 +1,786 @@
+package net.minecraft.text;
+
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
+import java.util.Objects;
+import java.util.Optional;
+import javax.annotation.Nullable;
+import net.minecraft.network.RegistryByteBuf;
+import net.minecraft.network.codec.PacketCodec;
+import net.minecraft.network.codec.PacketCodecs;
+import net.minecraft.util.Formatting;
+import net.minecraft.util.Identifier;
+
+/**
+ * The style of a {@link Text}, representing cosmetic attributes. It includes
+ * font, formatting, click/hover events (actions), color, etc.
+ * 
+ * <p>A style is immutable.
+ * 
+ * @see Text
+ */
+public class Style {
+    /**
+     * An empty style.
+     */
+    public static final Style EMPTY = new Style(null, null, null, null, null, null, null, null, null, null, null);
+    /**
+     * The identifier for the default font of a style.
+     */
+    public static final Identifier DEFAULT_FONT_ID = Identifier.ofVanilla("default");
+    @Nullable
+    final TextColor color;
+    @Nullable
+    final Integer shadowColor;
+    @Nullable
+    final Boolean bold;
+    @Nullable
+    final Boolean italic;
+    @Nullable
+    final Boolean underlined;
+    @Nullable
+    final Boolean strikethrough;
+    @Nullable
+    final Boolean obfuscated;
+    @Nullable
+    final ClickEvent clickEvent;
+    @Nullable
+    final HoverEvent hoverEvent;
+    @Nullable
+    final String insertion;
+    @Nullable
+    final Identifier font;
+
+    private static Style of(
+        Optional<TextColor> color,
+        Optional<Integer> shadowColor,
+        Optional<Boolean> bold,
+        Optional<Boolean> italic,
+        Optional<Boolean> underlined,
+        Optional<Boolean> strikethrough,
+        Optional<Boolean> obfuscated,
+        Optional<ClickEvent> clickEvent,
+        Optional<HoverEvent> hoverEvent,
+        Optional<String> insertion,
+        Optional<Identifier> font
+    ) {
+        Style style = new Style(
+            color.orElse(null),
+            shadowColor.orElse(null),
+            bold.orElse(null),
+            italic.orElse(null),
+            underlined.orElse(null),
+            strikethrough.orElse(null),
+            obfuscated.orElse(null),
+            clickEvent.orElse(null),
+            hoverEvent.orElse(null),
+            insertion.orElse(null),
+            font.orElse(null)
+        );
+        return style.equals(EMPTY) ? EMPTY : style;
+    }
+
+    private Style(
+        @Nullable TextColor color,
+        @Nullable Integer shadowColor,
+        @Nullable Boolean bold,
+        @Nullable Boolean italic,
+        @Nullable Boolean underlined,
+        @Nullable Boolean strikethrough,
+        @Nullable Boolean obfuscated,
+        @Nullable ClickEvent clickEvent,
+        @Nullable HoverEvent hoverEvent,
+        @Nullable String insertion,
+        @Nullable Identifier font
+    ) {
+        this.color = color;
+        this.shadowColor = shadowColor;
+        this.bold = bold;
+        this.italic = italic;
+        this.underlined = underlined;
+        this.strikethrough = strikethrough;
+        this.obfuscated = obfuscated;
+        this.clickEvent = clickEvent;
+        this.hoverEvent = hoverEvent;
+        this.insertion = insertion;
+        this.font = font;
+    }
+
+    /**
+     * Returns the color of this style.
+     */
+    @Nullable
+    public TextColor getColor() {
+        return this.color;
+    }
+
+    @Nullable
+    public Integer getShadowColor() {
+        return this.shadowColor;
+    }
+
+    /**
+     * Returns whether the style has bold formatting.
+     * 
+     * @see Formatting#BOLD
+     */
+    public boolean isBold() {
+        return this.bold == Boolean.TRUE;
+    }
+
+    /**
+     * Returns whether the style has italic formatting.
+     * 
+     * @see Formatting#ITALIC
+     */
+    public boolean isItalic() {
+        return this.italic == Boolean.TRUE;
+    }
+
+    /**
+     * Returns whether the style has strikethrough formatting.
+     * 
+     * @see Formatting#STRIKETHROUGH
+     */
+    public boolean isStrikethrough() {
+        return this.strikethrough == Boolean.TRUE;
+    }
+
+    /**
+     * Returns whether the style has underline formatting.
+     * 
+     * @see Formatting#UNDERLINE
+     */
+    public boolean isUnderlined() {
+        return this.underlined == Boolean.TRUE;
+    }
+
+    /**
+     * Returns whether the style has obfuscated formatting.
+     * 
+     * @see Formatting#OBFUSCATED
+     */
+    public boolean isObfuscated() {
+        return this.obfuscated == Boolean.TRUE;
+    }
+
+    /**
+     * Returns if this is the empty style.
+     * 
+     * @see #EMPTY
+     */
+    public boolean isEmpty() {
+        return this == EMPTY;
+    }
+
+    /**
+     * Returns the click event of this style.
+     */
+    @Nullable
+    public ClickEvent getClickEvent() {
+        return this.clickEvent;
+    }
+
+    /**
+     * Returns the hover event of this style.
+     */
+    @Nullable
+    public HoverEvent getHoverEvent() {
+        return this.hoverEvent;
+    }
+
+    /**
+     * Returns the insertion text of the style.
+     * 
+     * <p>An insertion is inserted when a piece of text clicked while shift key
+     * is down in the chat HUD.
+     */
+    @Nullable
+    public String getInsertion() {
+        return this.insertion;
+    }
+
+    /**
+     * Returns the font of this style.
+     */
+    public Identifier getFont() {
+        return this.font != null ? this.font : DEFAULT_FONT_ID;
+    }
+
+    private static <T> Style with(Style newStyle, @Nullable T oldAttribute, @Nullable T newAttribute) {
+        return oldAttribute != null && newAttribute == null && newStyle.equals(EMPTY) ? EMPTY : newStyle;
+    }
+
+    /**
+     * Returns a new style with the color provided and all other attributes of
+     * this style.
+     * 
+     * @param color the new color
+     */
+    public Style withColor(@Nullable TextColor color) {
+        return Objects.equals(this.color, color)
+            ? this
+            : with(
+                new Style(
+                    color,
+                    this.shadowColor,
+                    this.bold,
+                    this.italic,
+                    this.underlined,
+                    this.strikethrough,
+                    this.obfuscated,
+                    this.clickEvent,
+                    this.hoverEvent,
+                    this.insertion,
+                    this.font
+                ),
+                this.color,
+                color
+            );
+    }
+
+    /**
+     * Returns a new style with the color provided and all other attributes of
+     * this style.
+     * 
+     * @param color the new color
+     */
+    public Style withColor(@Nullable Formatting color) {
+        return this.withColor(color != null ? TextColor.fromFormatting(color) : null);
+    }
+
+    public Style withColor(int rgbColor) {
+        return this.withColor(TextColor.fromRgb(rgbColor));
+    }
+
+    public Style withShadowColor(int shadowColor) {
+        return with(
+            new Style(
+                this.color,
+                shadowColor,
+                this.bold,
+                this.italic,
+                this.underlined,
+                this.strikethrough,
+                this.obfuscated,
+                this.clickEvent,
+                this.hoverEvent,
+                this.insertion,
+                this.font
+            ),
+            this.shadowColor,
+            shadowColor
+        );
+    }
+
+    /**
+     * Returns a new style with the bold attribute provided and all other
+     * attributes of this style.
+     */
+    public Style withBold(@Nullable Boolean bold) {
+        return Objects.equals(this.bold, bold)
+            ? this
+            : with(
+                new Style(
+                    this.color,
+                    this.shadowColor,
+                    bold,
+                    this.italic,
+                    this.underlined,
+                    this.strikethrough,
+                    this.obfuscated,
+                    this.clickEvent,
+                    this.hoverEvent,
+                    this.insertion,
+                    this.font
+                ),
+                this.bold,
+                bold
+            );
+    }
+
+    /**
+     * Returns a new style with the italic attribute provided and all other
+     * attributes of this style.
+     * 
+     * @param italic the new italic property
+     */
+    public Style withItalic(@Nullable Boolean italic) {
+        return Objects.equals(this.italic, italic)
+            ? this
+            : with(
+                new Style(
+                    this.color,
+                    this.shadowColor,
+                    this.bold,
+                    italic,
+                    this.underlined,
+                    this.strikethrough,
+                    this.obfuscated,
+                    this.clickEvent,
+                    this.hoverEvent,
+                    this.insertion,
+                    this.font
+                ),
+                this.italic,
+                italic
+            );
+    }
+
+    /**
+     * Returns a new style with the underline attribute provided and all other
+     * attributes of this style.
+     */
+    public Style withUnderline(@Nullable Boolean underline) {
+        return Objects.equals(this.underlined, underline)
+            ? this
+            : with(
+                new Style(
+                    this.color,
+                    this.shadowColor,
+                    this.bold,
+                    this.italic,
+                    underline,
+                    this.strikethrough,
+                    this.obfuscated,
+                    this.clickEvent,
+                    this.hoverEvent,
+                    this.insertion,
+                    this.font
+                ),
+                this.underlined,
+                underline
+            );
+    }
+
+    public Style withStrikethrough(@Nullable Boolean strikethrough) {
+        return Objects.equals(this.strikethrough, strikethrough)
+            ? this
+            : with(
+                new Style(
+                    this.color,
+                    this.shadowColor,
+                    this.bold,
+                    this.italic,
+                    this.underlined,
+                    strikethrough,
+                    this.obfuscated,
+                    this.clickEvent,
+                    this.hoverEvent,
+                    this.insertion,
+                    this.font
+                ),
+                this.strikethrough,
+                strikethrough
+            );
+    }
+
+    public Style withObfuscated(@Nullable Boolean obfuscated) {
+        return Objects.equals(this.obfuscated, obfuscated)
+            ? this
+            : with(
+                new Style(
+                    this.color,
+                    this.shadowColor,
+                    this.bold,
+                    this.italic,
+                    this.underlined,
+                    this.strikethrough,
+                    obfuscated,
+                    this.clickEvent,
+                    this.hoverEvent,
+                    this.insertion,
+                    this.font
+                ),
+                this.obfuscated,
+                obfuscated
+            );
+    }
+
+    /**
+     * Returns a new style with the click event provided and all other
+     * attributes of this style.
+     * 
+     * @param clickEvent the new click event
+     */
+    public Style withClickEvent(@Nullable ClickEvent clickEvent) {
+        return Objects.equals(this.clickEvent, clickEvent)
+            ? this
+            : with(
+                new Style(
+                    this.color,
+                    this.shadowColor,
+                    this.bold,
+                    this.italic,
+                    this.underlined,
+                    this.strikethrough,
+                    this.obfuscated,
+                    clickEvent,
+                    this.hoverEvent,
+                    this.insertion,
+                    this.font
+                ),
+                this.clickEvent,
+                clickEvent
+            );
+    }
+
+    /**
+     * Returns a new style with the hover event provided and all other
+     * attributes of this style.
+     * 
+     * @param hoverEvent the new hover event
+     */
+    public Style withHoverEvent(@Nullable HoverEvent hoverEvent) {
+        return Objects.equals(this.hoverEvent, hoverEvent)
+            ? this
+            : with(
+                new Style(
+                    this.color,
+                    this.shadowColor,
+                    this.bold,
+                    this.italic,
+                    this.underlined,
+                    this.strikethrough,
+                    this.obfuscated,
+                    this.clickEvent,
+                    hoverEvent,
+                    this.insertion,
+                    this.font
+                ),
+                this.hoverEvent,
+                hoverEvent
+            );
+    }
+
+    /**
+     * Returns a new style with the insertion provided and all other
+     * attributes of this style.
+     * 
+     * @param insertion the new insertion string
+     */
+    public Style withInsertion(@Nullable String insertion) {
+        return Objects.equals(this.insertion, insertion)
+            ? this
+            : with(
+                new Style(
+                    this.color,
+                    this.shadowColor,
+                    this.bold,
+                    this.italic,
+                    this.underlined,
+                    this.strikethrough,
+                    this.obfuscated,
+                    this.clickEvent,
+                    this.hoverEvent,
+                    insertion,
+                    this.font
+                ),
+                this.insertion,
+                insertion
+            );
+    }
+
+    /**
+     * Returns a new style with the font provided and all other
+     * attributes of this style.
+     * 
+     * @param font the new font
+     */
+    public Style withFont(@Nullable Identifier font) {
+        return Objects.equals(this.font, font)
+            ? this
+            : with(
+                new Style(
+                    this.color,
+                    this.shadowColor,
+                    this.bold,
+                    this.italic,
+                    this.underlined,
+                    this.strikethrough,
+                    this.obfuscated,
+                    this.clickEvent,
+                    this.hoverEvent,
+                    this.insertion,
+                    font
+                ),
+                this.font,
+                font
+            );
+    }
+
+    /**
+     * Returns a new style with the formatting provided and all other
+     * attributes of this style.
+     * 
+     * @param formatting the new formatting
+     */
+    public Style withFormatting(Formatting formatting) {
+        TextColor textColor = this.color;
+        Boolean boolean_ = this.bold;
+        Boolean boolean_2 = this.italic;
+        Boolean boolean_3 = this.strikethrough;
+        Boolean boolean_4 = this.underlined;
+        Boolean boolean_5 = this.obfuscated;
+        switch (formatting) {
+            case OBFUSCATED:
+                boolean_5 = true;
+                break;
+            case BOLD:
+                boolean_ = true;
+                break;
+            case STRIKETHROUGH:
+                boolean_3 = true;
+                break;
+            case UNDERLINE:
+                boolean_4 = true;
+                break;
+            case ITALIC:
+                boolean_2 = true;
+                break;
+            case RESET:
+                return EMPTY;
+            default:
+                textColor = TextColor.fromFormatting(formatting);
+        }
+
+        return new Style(
+            textColor, this.shadowColor, boolean_, boolean_2, boolean_4, boolean_3, boolean_5, this.clickEvent, this.hoverEvent, this.insertion, this.font
+        );
+    }
+
+    /**
+     * Returns a new style with the formatting provided and some applicable
+     * attributes of this style.
+     * 
+     * <p>When a color formatting is passed for {@code formatting}, the other
+     * formattings, including bold, italic, strikethrough, underlined, and
+     * obfuscated, are all removed.
+     * 
+     * @param formatting the new formatting
+     */
+    public Style withExclusiveFormatting(Formatting formatting) {
+        TextColor textColor = this.color;
+        Boolean boolean_ = this.bold;
+        Boolean boolean_2 = this.italic;
+        Boolean boolean_3 = this.strikethrough;
+        Boolean boolean_4 = this.underlined;
+        Boolean boolean_5 = this.obfuscated;
+        switch (formatting) {
+            case OBFUSCATED:
+                boolean_5 = true;
+                break;
+            case BOLD:
+                boolean_ = true;
+                break;
+            case STRIKETHROUGH:
+                boolean_3 = true;
+                break;
+            case UNDERLINE:
+                boolean_4 = true;
+                break;
+            case ITALIC:
+                boolean_2 = true;
+                break;
+            case RESET:
+                return EMPTY;
+            default:
+                boolean_5 = false;
+                boolean_ = false;
+                boolean_3 = false;
+                boolean_4 = false;
+                boolean_2 = false;
+                textColor = TextColor.fromFormatting(formatting);
+        }
+
+        return new Style(
+            textColor, this.shadowColor, boolean_, boolean_2, boolean_4, boolean_3, boolean_5, this.clickEvent, this.hoverEvent, this.insertion, this.font
+        );
+    }
+
+    /**
+     * Returns a new style with the formattings provided and all other
+     * attributes of this style.
+     * 
+     * @param formattings an array of new formattings
+     */
+    public Style withFormatting(Formatting... formattings) {
+        TextColor textColor = this.color;
+        Boolean boolean_ = this.bold;
+        Boolean boolean_2 = this.italic;
+        Boolean boolean_3 = this.strikethrough;
+        Boolean boolean_4 = this.underlined;
+        Boolean boolean_5 = this.obfuscated;
+
+        for (Formatting formatting : formattings) {
+            switch (formatting) {
+                case OBFUSCATED:
+                    boolean_5 = true;
+                    break;
+                case BOLD:
+                    boolean_ = true;
+                    break;
+                case STRIKETHROUGH:
+                    boolean_3 = true;
+                    break;
+                case UNDERLINE:
+                    boolean_4 = true;
+                    break;
+                case ITALIC:
+                    boolean_2 = true;
+                    break;
+                case RESET:
+                    return EMPTY;
+                default:
+                    textColor = TextColor.fromFormatting(formatting);
+            }
+        }
+
+        return new Style(
+            textColor, this.shadowColor, boolean_, boolean_2, boolean_4, boolean_3, boolean_5, this.clickEvent, this.hoverEvent, this.insertion, this.font
+        );
+    }
+
+    /**
+     * Returns a new style with the undefined attributes of this style filled
+     * by the {@code parent} style.
+     * 
+     * @param parent the parent style
+     */
+    public Style withParent(Style parent) {
+        if (this == EMPTY) {
+            return parent;
+        } else {
+            return parent == EMPTY
+                ? this
+                : new Style(
+                    this.color != null ? this.color : parent.color,
+                    this.shadowColor != null ? this.shadowColor : parent.shadowColor,
+                    this.bold != null ? this.bold : parent.bold,
+                    this.italic != null ? this.italic : parent.italic,
+                    this.underlined != null ? this.underlined : parent.underlined,
+                    this.strikethrough != null ? this.strikethrough : parent.strikethrough,
+                    this.obfuscated != null ? this.obfuscated : parent.obfuscated,
+                    this.clickEvent != null ? this.clickEvent : parent.clickEvent,
+                    this.hoverEvent != null ? this.hoverEvent : parent.hoverEvent,
+                    this.insertion != null ? this.insertion : parent.insertion,
+                    this.font != null ? this.font : parent.font
+                );
+        }
+    }
+
+    @Override
+    public String toString() {
+        final StringBuilder stringBuilder = new StringBuilder("{");
+
+        class Writer {
+            private boolean shouldAppendComma;
+
+            private void appendComma() {
+                if (this.shouldAppendComma) {
+                    stringBuilder.append(',');
+                }
+
+                this.shouldAppendComma = true;
+            }
+
+            void append(String key, @Nullable Boolean value) {
+                if (value != null) {
+                    this.appendComma();
+                    if (!value) {
+                        stringBuilder.append('!');
+                    }
+
+                    stringBuilder.append(key);
+                }
+            }
+
+            void append(String key, @Nullable Object value) {
+                if (value != null) {
+                    this.appendComma();
+                    stringBuilder.append(key);
+                    stringBuilder.append('=');
+                    stringBuilder.append(value);
+                }
+            }
+        }
+
+        Writer writer = new Writer();
+        writer.append("color", this.color);
+        writer.append("shadowColor", this.shadowColor);
+        writer.append("bold", this.bold);
+        writer.append("italic", this.italic);
+        writer.append("underlined", this.underlined);
+        writer.append("strikethrough", this.strikethrough);
+        writer.append("obfuscated", this.obfuscated);
+        writer.append("clickEvent", this.clickEvent);
+        writer.append("hoverEvent", this.hoverEvent);
+        writer.append("insertion", this.insertion);
+        writer.append("font", this.font);
+        stringBuilder.append("}");
+        return stringBuilder.toString();
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        } else {
+            return !(o instanceof Style style)
+                ? false
+                : this.bold == style.bold
+                    && Objects.equals(this.getColor(), style.getColor())
+                    && Objects.equals(this.getShadowColor(), style.getShadowColor())
+                    && this.italic == style.italic
+                    && this.obfuscated == style.obfuscated
+                    && this.strikethrough == style.strikethrough
+                    && this.underlined == style.underlined
+                    && Objects.equals(this.clickEvent, style.clickEvent)
+                    && Objects.equals(this.hoverEvent, style.hoverEvent)
+                    && Objects.equals(this.insertion, style.insertion)
+                    && Objects.equals(this.font, style.font);
+        }
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(
+            this.color,
+            this.shadowColor,
+            this.bold,
+            this.italic,
+            this.underlined,
+            this.strikethrough,
+            this.obfuscated,
+            this.clickEvent,
+            this.hoverEvent,
+            this.insertion
+        );
+    }
+
+    /**
+     * Contains codecs to serialize {@link Style}s.
+     */
+    public static class Codecs {
+        public static final MapCodec<Style> MAP_CODEC = RecordCodecBuilder.mapCodec(
+            instance -> instance.group(
+                    TextColor.CODEC.optionalFieldOf("color").forGetter(style -> Optional.ofNullable(style.color)),
+                    net.minecraft.util.dynamic.Codecs.ARGB.optionalFieldOf("shadow_color").forGetter(style -> Optional.ofNullable(style.shadowColor)),
+                    Codec.BOOL.optionalFieldOf("bold").forGetter(style -> Optional.ofNullable(style.bold)),
+                    Codec.BOOL.optionalFieldOf("italic").forGetter(style -> Optional.ofNullable(style.italic)),
+                    Codec.BOOL.optionalFieldOf("underlined").forGetter(style -> Optional.ofNullable(style.underlined)),
+                    Codec.BOOL.optionalFieldOf("strikethrough").forGetter(style -> Optional.ofNullable(style.strikethrough)),
+                    Codec.BOOL.optionalFieldOf("obfuscated").forGetter(style -> Optional.ofNullable(style.obfuscated)),
+                    ClickEvent.CODEC.optionalFieldOf("clickEvent").forGetter(style -> Optional.ofNullable(style.clickEvent)),
+                    HoverEvent.CODEC.optionalFieldOf("hoverEvent").forGetter(style -> Optional.ofNullable(style.hoverEvent)),
+                    Codec.STRING.optionalFieldOf("insertion").forGetter(style -> Optional.ofNullable(style.insertion)),
+                    Identifier.CODEC.optionalFieldOf("font").forGetter(style -> Optional.ofNullable(style.font))
+                )
+                .apply(instance, Style::of)
+        );
+        public static final Codec<Style> CODEC = MAP_CODEC.codec();
+        public static final PacketCodec<RegistryByteBuf, Style> PACKET_CODEC = PacketCodecs.unlimitedRegistryCodec(CODEC);
+    }
+}
+
