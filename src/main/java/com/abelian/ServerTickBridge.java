@@ -1,7 +1,7 @@
 package com.abelian;
 
 import com.abelian.mixin.ServerChunkManagerAccessor;
-import com.abelian.regionTick.Region;
+import com.abelian.regionTick.RegionTickManager;
 import net.minecraft.entity.Entity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.world.SpawnDensityCapper;
@@ -12,7 +12,7 @@ import java.util.Map;
 
 public class ServerTickBridge {
     private static final ThreadLocal<Boolean> CUSTOM_TICK_IN_PROGRESS = ThreadLocal.withInitial(() -> false);
-    private static final ThreadLocal<Map<Entity, Region>> REGION_TICK_OWNERS =
+    private static final ThreadLocal<Map<Entity, RegionTickManager>> REGION_TICK_OWNERS =
             ThreadLocal.withInitial(IdentityHashMap::new);
     private static final ThreadLocal<Map<ServerWorld, SpawnHelper.Info>> SPAWN_INFOS =
             ThreadLocal.withInitial(IdentityHashMap::new);
@@ -30,8 +30,8 @@ public class ServerTickBridge {
         SPAWN_INFOS.get().clear();
     }
 
-    public static boolean claimEntity(Entity entity, Region region) {
-        Region owner = REGION_TICK_OWNERS.get().putIfAbsent(entity, region);
+    public static boolean claimEntity(Entity entity, RegionTickManager region) {
+        RegionTickManager owner = REGION_TICK_OWNERS.get().putIfAbsent(entity, region);
         return owner == null || owner == region;
     }
 

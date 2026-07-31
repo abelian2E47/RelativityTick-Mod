@@ -2,7 +2,7 @@ package com.abelian;
 
 import com.abelian.config.RelativityTickConfig;
 import com.abelian.network.*;
-import com.abelian.regionTick.Region;
+import com.abelian.regionTick.RegionTickManager;
 import com.abelian.regionTick.RegionBlockEventProcessor;
 import com.abelian.regionTick.RegionsManager;
 import net.fabricmc.api.ModInitializer;
@@ -94,7 +94,7 @@ public class RelativityTick implements ModInitializer {
         //step
         ServerTickEvents.END_SERVER_TICK.register(server -> {
             for (String id : RegionsManager.getRegionIdsByPriority()) {
-                Region region = RegionsManager.getRegion(id);
+                RegionTickManager region = RegionsManager.getRegion(id);
                 ServerWorld world = server.getWorld(region.getDimension());
                 if (world == null) continue;
                 if (region.isControlled() && region.isStepping() && !region.isRunning()) {
@@ -128,10 +128,10 @@ public class RelativityTick implements ModInitializer {
             }
         });
 
-        //按rate运行
+        //running
         ServerTickEvents.END_SERVER_TICK.register(server -> {
             for (String id : RegionsManager.getRegionIdsByPriority()) {
-                Region region = RegionsManager.getRegion(id);
+                RegionTickManager region = RegionsManager.getRegion(id);
                 if (!region.isRunning() || !region.isControlled()) continue;
 
                 ServerWorld world = server.getWorld(region.getDimension());
@@ -152,7 +152,7 @@ public class RelativityTick implements ModInitializer {
 
         ServerTickEvents.END_SERVER_TICK.register(server -> {
             for (String id : RegionsManager.getRegionIdsByPriority()) {
-                Region region = RegionsManager.getRegion(id);
+                RegionTickManager region = RegionsManager.getRegion(id);
                 ServerWorld world = server.getWorld(region.getDimension());
                 if (world == null || !region.isControlled()) continue;
 
@@ -166,7 +166,7 @@ public class RelativityTick implements ModInitializer {
         });
 	}
 
-    private static boolean shouldSendRegionTps(String id, Region region, double currentTPS) {
+    private static boolean shouldSendRegionTps(String id, RegionTickManager region, double currentTPS) {
         Double lastTPS = LAST_SENT_REGION_TPS.get(id);
         if (lastTPS == null) return true;
         if (!region.hasFullTpsSampleWindow()) return false;
@@ -183,7 +183,7 @@ public class RelativityTick implements ModInitializer {
         return candidateTicks >= REGION_TPS_STABLE_SEND_GT;
     }
 
-    private static void sendRegionTpsAndEntities(String id, Region region, ServerWorld world, double currentTPS) {
+    private static void sendRegionTpsAndEntities(String id, RegionTickManager region, ServerWorld world, double currentTPS) {
         RegionTPSPayload tpsPayload = new RegionTPSPayload(id, region.getRegionTickDuration(), currentTPS, region.getVirtualTime());
         RegionEntitySyncPayload entityPayload = new RegionEntitySyncPayload(id, new ArrayList<>(region.collectEntityStates(world)));
         for (ServerPlayerEntity player : world.getPlayers()) {
@@ -192,14 +192,14 @@ public class RelativityTick implements ModInitializer {
         }
     }
 
-    private static void sendRegionTime(String id, Region region, ServerWorld world) {
+    private static void sendRegionTime(String id, RegionTickManager region, ServerWorld world) {
         RegionTimePayload payload = new RegionTimePayload(id, region.getVirtualTime());
         for (ServerPlayerEntity player : world.getPlayers()) {
             ServerPlayNetworking.send(player, payload);
         }
     }
 
-    private static RegionRunResult runRegionTicks(MinecraftServer server, Region region, ServerWorld world, int maxSteps, boolean consumePendingSteps) {
+    private static RegionRunResult runRegionTicks(MinecraftServer server, RegionTickManager region, ServerWorld world, int maxSteps, boolean consumePendingSteps) {
         long regionStartNano = System.nanoTime();
         long regionBudgetNano = (long)(region.getTickDurationLimit() * 1_000_000L);
         WorldTickScheduler<Block> blockScheduler = world.getBlockTickScheduler();

@@ -3,7 +3,7 @@ package com.abelian.client.clientRegionTick;
 import com.abelian.client.render.InterpolationState;
 import com.abelian.network.RegionSyncPayload;
 import com.abelian.network.RegionTPSPayload;
-import com.abelian.regionTick.Region;
+import com.abelian.regionTick.RegionTickManager;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -13,7 +13,7 @@ public class ClientRegion {
     private final String dimension;
     private final Set<Long> chunkPositions;
 
-    private Region.RegionState regionState;
+    private RegionTickManager.RegionState regionState;
     private final InterpolationState interpolationState = new InterpolationState();
     private double rate;
     private double regionTPS;
@@ -94,9 +94,9 @@ public class ClientRegion {
         return pendingSteps;
     }
 
-    public boolean isControlled(){ return regionState != Region.RegionState.RELEASED; }
+    public boolean isControlled(){ return regionState != RegionTickManager.RegionState.RELEASED; }
 
-    public boolean isRunning(){ return regionState == Region.RegionState.RUNNING; }
+    public boolean isRunning(){ return regionState == RegionTickManager.RegionState.RUNNING; }
 
     public boolean isStepping(){ return pendingSteps > 0; }
 
@@ -106,7 +106,7 @@ public class ClientRegion {
 
     public String getId(){ return id;}
 
-    public Region.RegionState getRegionState() {
+    public RegionTickManager.RegionState getRegionState() {
         return regionState;
     }
 

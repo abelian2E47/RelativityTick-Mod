@@ -2,9 +2,9 @@ package com.abelian;
 
 import com.abelian.config.RelativityTickConfig;
 import com.abelian.network.*;
-import com.abelian.regionTick.Region;
+import com.abelian.regionTick.RegionTickManager;
 import com.abelian.regionTick.RegionsManager;
-import com.abelian.regionTick.Region.RegionState;
+import com.abelian.regionTick.RegionTickManager.RegionState;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.BoolArgumentType;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
@@ -38,11 +38,11 @@ import java.util.function.BiConsumer;
 
 public class ServerCommands {
 
-    private record RegionCommandContext(ServerCommandSource source, Region manager, String id, ServerWorld world) {
+    private record RegionCommandContext(ServerCommandSource source, RegionTickManager manager, String id, ServerWorld world) {
         public static RegionCommandContext of(CommandContext<ServerCommandSource> ctx) {
             ServerCommandSource source = ctx.getSource();
             String id = StringArgumentType.getString(ctx, "id");
-            Region manager = RegionsManager.getRegion(id);
+            RegionTickManager manager = RegionsManager.getRegion(id);
             ServerWorld world = manager == null ? source.getWorld() : source.getServer().getWorld(manager.getDimension());
             return new RegionCommandContext(source, manager, id, world == null ? source.getWorld() : world);
         }
@@ -352,7 +352,7 @@ public class ServerCommands {
         if (rcc.isInvalid()) return 0;
         if (rcc.manager.isControlled()) release(rcc);
         RegionsManager.removeRegion(rcc.id);
-        RegionSyncPayload payload = new RegionSyncPayload(rcc.id, rcc.manager.getDimensionId(), java.util.Collections.emptySet(), Region.RegionState.RELEASED, 20, rcc.manager.getVirtualTime());
+        RegionSyncPayload payload = new RegionSyncPayload(rcc.id, rcc.manager.getDimensionId(), java.util.Collections.emptySet(), RegionTickManager.RegionState.RELEASED, 20, rcc.manager.getVirtualTime());
 
         rcc.source.sendFeedback(() -> Text.translatable("relativitytick.command.region.removed", Text.literal(rcc.id).formatted(Formatting.GOLD)), false);
         return 1;
@@ -375,7 +375,7 @@ public class ServerCommands {
         return 1;
     }
 
-    private static void sendRegionStatus(ServerCommandSource source, String id, Region mgr) {
+    private static void sendRegionStatus(ServerCommandSource source, String id, RegionTickManager mgr) {
         boolean controlled = mgr.isControlled();
         boolean running = controlled && mgr.isRunning();
         int pending = mgr.getPendingSteps();

@@ -1,10 +1,11 @@
 package com.abelian.regionTick;
 
-import com.abelian.RelativityTickUtils;
+import com.abelian.RegionPersistentState;
 import com.abelian.config.RelativityTickConfig;
 import com.abelian.RegionTickContext;
 import com.abelian.ServerTickBridge;
 import com.abelian.mixin.WorldAccessor;
+import net.minecraft.server.world.ServerChunkManager;
 import net.minecraft.world.chunk.BlockEntityTickInvoker;
 import java.util.Iterator;
 
@@ -18,25 +19,23 @@ import net.minecraft.entity.Entity;
 import net.minecraft.entity.SpawnGroup;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.fluid.Fluid;
-import net.minecraft.server.world.ServerChunkManager;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.world.SpawnHelper;
-import net.minecraft.world.SpawnDensityCapper;
 import net.minecraft.world.World;
+import net.minecraft.world.chunk.Chunk;
 import net.minecraft.world.chunk.WorldChunk;
 import net.minecraft.world.tick.WorldTickScheduler;
 
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.BiConsumer;
 
 
-public class Region {
+public class RegionTickManager {
     public enum RegionState {
         RELEASED,
         FROZEN,
@@ -70,7 +69,7 @@ public class Region {
     private boolean reachTickDurationLimit = false;
 
 
-    public Region(String id, RegistryKey<World> dimension, Set<Long> chunkPositions){
+    public RegionTickManager(String id, RegistryKey<World> dimension, Set<Long> chunkPositions){
         this.id = id;
         this.dimension = dimension;
         for (long chunkPos : chunkPositions){
@@ -122,10 +121,13 @@ public class Region {
     }
 
     public <T> void releaseRegion(WorldTickScheduler<T> worldScheduler, long currentWorldTime) {
-        for (ChunkTickManager chunk : region){
-            chunk.releaseChunk(worldScheduler, this, currentWorldTime,freezeStartTime,stepped);
-        }
+        releaseRegion(worldScheduler, currentWorldTime, true);
+    }
 
+    public <T> void releaseRegion(WorldTickScheduler<T> worldScheduler, long currentWorldTime, boolean restoreWorldTime) {
+        for (ChunkTickManager chunk : region) {
+            chunk.releaseChunk(worldScheduler, this, currentWorldTime, freezeStartTime, stepped, restoreWorldTime);
+        }
     }
 
     public void takeOverChunk(long chunkPos, ServerWorld world) {
@@ -295,17 +297,26 @@ public class Region {
                 )
                 : List.of();
 
-        loadingAccessor.invokeForEachTickedChunk(holder -> {
-            WorldChunk chunk = holder.getWorldChunk();
-            if (chunk == null || !chunkPositions.contains(chunk.getPos().toLong())) return;
+        ServerChunkManager chunkManager = world.getChunkManager();
+
+        for (long chunkPosLong : chunkPositions) {
+            ChunkPos chunkPos = new ChunkPos(chunkPosLong);
+
+            WorldChunk chunk = chunkManager.getWorldChunk(chunkPos.x, chunkPos.z);
+            if (chunk == null) continue;
+            if (!world.shouldTick(chunkPos)) continue;
+            //区块时间
             chunk.increaseInhabitedTime(1L);
-            if (!spawnGroups.isEmpty() && world.getWorldBorder().contains(chunk.getPos())) {
+            //生成逻辑
+            if (!spawnGroups.isEmpty()
+                    && world.getWorldBorder().contains(chunkPos)) {
                 SpawnHelper.spawn(world, chunk, spawnInfo, spawnGroups);
             }
-            if (world.shouldTickBlocksInChunk(chunk.getPos().toLong())) {
+            //random tick
+            if (world.shouldTickBlocksInChunk(chunkPosLong)) {
                 world.tickChunk(chunk, randomTickSpeed);
             }
-        });
+        }
     }
 
     public void setPendingSteps(int steps){
@@ -362,6 +373,21 @@ public class Region {
 
     public boolean isInWorld(ServerWorld world) {
         return world.getRegistryKey().equals(dimension);
+    }
+
+    public RegionPersistentState.RegionData toPersistentData() {
+        return new RegionPersistentState.RegionData(
+                dimension,
+                chunkPositions,
+                rate,
+                tickDurationLimit,
+                regionPriority,
+                state,
+                regionTime,
+                freezeStartTime,
+                stepped,
+                true
+        );
     }
 
     public Set<Long> getChunkPositions() {

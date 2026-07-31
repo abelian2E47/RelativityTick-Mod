@@ -16,12 +16,12 @@ public final class RegionBlockEventProcessor {
     private RegionBlockEventProcessor() {
     }
 
-    private static final java.util.Map<ServerWorld, java.util.Map<Region, List<BlockEvent>>> CONTROLLED_EVENTS =
+    private static final java.util.Map<ServerWorld, java.util.Map<RegionTickManager, List<BlockEvent>>> CONTROLLED_EVENTS =
             new java.util.IdentityHashMap<>();
     private static final java.util.Map<ServerWorld, List<BlockEvent>> DEFERRED_EVENTS =
             new java.util.IdentityHashMap<>();
 
-    public static void process(ServerWorld world, Predicate<Region> shouldProcess) {
+    public static void process(ServerWorld world, Predicate<RegionTickManager> shouldProcess) {
         restoreDeferredEvents(world);
         ServerWorldAccessor accessor = (ServerWorldAccessor) world;
         ObjectLinkedOpenHashSet<BlockEvent> queue = accessor.getSyncedBlockEventQueue();
@@ -30,7 +30,7 @@ public final class RegionBlockEventProcessor {
         List<BlockEvent> deferred = new ArrayList<>(queue.size());
         while (!queue.isEmpty()) {
             BlockEvent event = queue.removeFirst();
-            Region owner = RegionsManager.getRegionByChunk(world, ChunkPos.toLong(event.pos()));
+            RegionTickManager owner = RegionsManager.getRegionByChunk(world, ChunkPos.toLong(event.pos()));
             if (!shouldProcess.test(owner) || !world.shouldTickBlockPos(event.pos())) {
                 deferred.add(event);
                 continue;
@@ -40,9 +40,9 @@ public final class RegionBlockEventProcessor {
         queue.addAll(deferred);
     }
 
-    public static void process(ServerWorld world, Region region) {
+    public static void process(ServerWorld world, RegionTickManager region) {
         stageControlledEvents(world);
-        java.util.Map<Region, List<BlockEvent>> byRegion = CONTROLLED_EVENTS.get(world);
+        java.util.Map<RegionTickManager, List<BlockEvent>> byRegion = CONTROLLED_EVENTS.get(world);
         if (byRegion == null) return;
         List<BlockEvent> events = byRegion.remove(region);
         if (events == null) return;
@@ -50,7 +50,7 @@ public final class RegionBlockEventProcessor {
         ServerWorldAccessor accessor = (ServerWorldAccessor) world;
         List<BlockEvent> deferred = DEFERRED_EVENTS.computeIfAbsent(world, ignored -> new ArrayList<>());
         for (BlockEvent event : events) {
-            Region owner = RegionsManager.getRegionByChunk(world, ChunkPos.toLong(event.pos()));
+            RegionTickManager owner = RegionsManager.getRegionByChunk(world, ChunkPos.toLong(event.pos()));
             if (owner == region && region.isControlled() && world.shouldTickBlockPos(event.pos())) {
                 processEvent(world, accessor, event);
             } else {
@@ -62,7 +62,7 @@ public final class RegionBlockEventProcessor {
     private static void stageControlledEvents(ServerWorld world) {
         ServerWorldAccessor accessor = (ServerWorldAccessor) world;
         ObjectLinkedOpenHashSet<BlockEvent> queue = accessor.getSyncedBlockEventQueue();
-        java.util.Map<Region, List<BlockEvent>> byRegion = CONTROLLED_EVENTS.computeIfAbsent(world, ignored -> new java.util.IdentityHashMap<>());
+        java.util.Map<RegionTickManager, List<BlockEvent>> byRegion = CONTROLLED_EVENTS.computeIfAbsent(world, ignored -> new java.util.IdentityHashMap<>());
         List<BlockEvent> deferred = DEFERRED_EVENTS.computeIfAbsent(world, ignored -> new ArrayList<>());
 
         var regionIterator = byRegion.entrySet().iterator();
@@ -76,7 +76,7 @@ public final class RegionBlockEventProcessor {
 
         while (!queue.isEmpty()) {
             BlockEvent event = queue.removeFirst();
-            Region owner = RegionsManager.getRegionByChunk(world, ChunkPos.toLong(event.pos()));
+            RegionTickManager owner = RegionsManager.getRegionByChunk(world, ChunkPos.toLong(event.pos()));
             if (owner != null && owner.isControlled()) {
                 byRegion.computeIfAbsent(owner, ignored -> new ArrayList<>()).add(event);
             } else {

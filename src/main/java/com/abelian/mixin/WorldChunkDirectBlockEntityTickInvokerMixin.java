@@ -1,6 +1,6 @@
 package com.abelian.mixin;
 
-import com.abelian.regionTick.Region;
+import com.abelian.regionTick.RegionTickManager;
 import com.abelian.regionTick.RegionsManager;
 import com.abelian.RegionTickContext;
 import net.minecraft.block.entity.BlockEntity;
@@ -30,7 +30,7 @@ public abstract class   WorldChunkDirectBlockEntityTickInvokerMixin {
         }
 
         long chunkPos = ChunkPos.toLong(this.blockEntity.getPos());
-        Region region = RegionsManager.getRegionByChunk(world, chunkPos);
+        RegionTickManager region = RegionsManager.getRegionByChunk(world, chunkPos);
         if (RegionTickContext.getTime(world) != null) {
             return;
         }

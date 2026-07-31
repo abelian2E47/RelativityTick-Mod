@@ -19,24 +19,24 @@ import java.util.Set;
 import static com.abelian.RelativityTickUtils.getServer;
 
 public class RegionsManager {
-    private static final Map<String, Region> ID_TO_REGION = new HashMap<>();
+    private static final Map<String, RegionTickManager> ID_TO_REGION = new HashMap<>();
     private record DimensionChunkKey(RegistryKey<World> dimension, long chunkPos) {}
 
-    private static final Map<DimensionChunkKey, Region> CHUNK_TO_REGION = new HashMap<>();
+    private static final Map<DimensionChunkKey, RegionTickManager> CHUNK_TO_REGION = new HashMap<>();
     private static List<String> REGION_IDS_BY_PRIORITY = List.of();
     private static boolean regionPriorityOrderDirty = true;
     private static boolean loadedFromPersistentState = false;
     private static boolean shuttingDown = false;
 
     public static void createRegion(String id, Set<Long> chunkPositions, ServerWorld world) {
-        Region existing = ID_TO_REGION.remove(id);
+        RegionTickManager existing = ID_TO_REGION.remove(id);
         if (existing != null) {
             releaseControl(existing);
             removeMappings(existing);
         }
 
         Set<Long> chunks = new HashSet<>(chunkPositions);
-        Region newRegion = new Region(id, world.getRegistryKey(), chunks);
+        RegionTickManager newRegion = new RegionTickManager(id, world.getRegistryKey(), chunks);
         newRegion.setRegionPriority(nextAvailablePriority());
         regionPriorityOrderDirty = true;
         ID_TO_REGION.put(id, newRegion);
@@ -52,7 +52,7 @@ public class RegionsManager {
     }
 
     public static void addChunkToRegion(String id, long chunkPos, ServerWorld world) {
-        Region region = ID_TO_REGION.get(id);
+        RegionTickManager region = ID_TO_REGION.get(id);
         if (region == null) {
             createRegion(id, Set.of(chunkPos), world);
             return;
@@ -74,7 +74,7 @@ public class RegionsManager {
     public static int addChunksToRegion(String id, Set<Long> chunkPositions, ServerWorld world) {
         if (chunkPositions.isEmpty()) return 0;
 
-        Region region = ID_TO_REGION.get(id);
+        RegionTickManager region = ID_TO_REGION.get(id);
         if (region == null) {
             createRegion(id, chunkPositions, world);
             return chunkPositions.size();
@@ -101,7 +101,7 @@ public class RegionsManager {
     }
 
     public static void removeChunkFromRegion(String id, long chunkPos, ServerWorld world) {
-        Region region = ID_TO_REGION.get(id);
+        RegionTickManager region = ID_TO_REGION.get(id);
 
         DimensionChunkKey key = key(world, chunkPos);
         CHUNK_TO_REGION.remove(key);
@@ -114,7 +114,7 @@ public class RegionsManager {
     }
 
     public static void removeRegion(String id) {
-        Region region = ID_TO_REGION.remove(id);
+        RegionTickManager region = ID_TO_REGION.remove(id);
         regionPriorityOrderDirty = true;
         if (region != null) {
             removeMappings(region);
@@ -122,12 +122,12 @@ public class RegionsManager {
         }
     }
 
-    public static Region getRegionByChunk(ServerWorld world, long chunkPos) {
+    public static RegionTickManager getRegionByChunk(ServerWorld world, long chunkPos) {
         return CHUNK_TO_REGION.get(key(world, chunkPos));
     }
 
-    public static Region getControlledRegionByScheduler(ChunkTickScheduler<?> scheduler) {
-        Region region = ControlledSchedulerRegistry.getRegion(scheduler);
+    public static RegionTickManager getControlledRegionByScheduler(ChunkTickScheduler<?> scheduler) {
+        RegionTickManager region = ControlledSchedulerRegistry.getRegion(scheduler);
         return region != null && region.isControlled() ? region : null;
     }
 
@@ -135,7 +135,7 @@ public class RegionsManager {
         return getRegionId(key(world, chunkPos));
     }
 
-    public static Region getRegion(String id) {
+    public static RegionTickManager getRegion(String id) {
         return ID_TO_REGION.get(id);
     }
 
@@ -156,7 +156,7 @@ public class RegionsManager {
 
     public static void restorePersistentStates() {
         shuttingDown = false;
-        for (Region region : ID_TO_REGION.values()) {
+        for (RegionTickManager region : ID_TO_REGION.values()) {
             region.setPendingSteps(0);
             region.setAccumulator(0.0);
             if (!region.isControlled()) continue;
@@ -169,38 +169,38 @@ public class RegionsManager {
     }
 
     public static void prepareForShutdown() {
-        savePersistentState();
         shuttingDown = true;
-        for (Region region : ID_TO_REGION.values()) {
+        for (RegionTickManager region : ID_TO_REGION.values()) {
             region.setPendingSteps(0);
             region.setAccumulator(0.0);
-            releaseControl(region);
+            releaseControl(region, false);
         }
+        savePersistentState();
     }
 
     public static void onChunkLoad(ServerWorld world, long chunkPos) {
         if (shuttingDown) return;
-        Region region = getRegionByChunk(world, chunkPos);
+        RegionTickManager region = getRegionByChunk(world, chunkPos);
         if (region != null && region.isControlled()) {
             region.takeOverChunk(chunkPos, world);
         }
     }
 
     public static void onChunkUnload(ServerWorld world, long chunkPos) {
-        Region region = getRegionByChunk(world, chunkPos);
+        RegionTickManager region = getRegionByChunk(world, chunkPos);
         if (region != null && region.isControlled()) {
             region.releaseChunk(chunkPos, world);
         }
     }
 
     public static void syncAllRegions(ServerPlayerEntity player) {
-        for (Map.Entry<String, Region> entry : ID_TO_REGION.entrySet()) {
+        for (Map.Entry<String, RegionTickManager> entry : ID_TO_REGION.entrySet()) {
             ServerPlayNetworking.send(player, createSyncPayload(entry.getKey(), entry.getValue()));
         }
     }
 
     public static void clear() {
-        for (Region region : ID_TO_REGION.values()) {
+        for (RegionTickManager region : ID_TO_REGION.values()) {
             ControlledSchedulerRegistry.clearRegion(region);
         }
         ID_TO_REGION.clear();
@@ -212,7 +212,7 @@ public class RegionsManager {
     }
 
     public static void setRegionPriority(String id, int priority) {
-        Region region = ID_TO_REGION.get(id);
+        RegionTickManager region = ID_TO_REGION.get(id);
         if (region != null) {
             region.setRegionPriority(priority);
             regionPriorityOrderDirty = true;
@@ -226,7 +226,7 @@ public class RegionsManager {
     }
 
     public static void setRegionTickDurationLimit(String id, double maxRegionCostMs) {
-        Region region = ID_TO_REGION.get(id);
+        RegionTickManager region = ID_TO_REGION.get(id);
         if (region != null) {
             region.setMaxRegionCostMs(maxRegionCostMs);
             savePersistentState();
@@ -242,7 +242,7 @@ public class RegionsManager {
         for (Map.Entry<String, RegionPersistentState.RegionData> entry : state.getRegions().entrySet()) {
             String id = entry.getKey();
             RegionPersistentState.RegionData data = entry.getValue();
-            Region region = new Region(id, data.dimension(), data.chunks());
+            RegionTickManager region = new RegionTickManager(id, data.dimension(), data.chunks());
             region.setRate(data.rate());
             region.setRegionTime(data.regionTime());
             region.setMaxRegionCostMs(data.tickDurationLimit());
@@ -270,21 +270,9 @@ public class RegionsManager {
     public static void savePersistentState() {
         if (getServer() == null || getServer().getOverworld() == null) return;
         RegionPersistentState state = getServer().getOverworld().getPersistentStateManager().getOrCreate(RegionPersistentState.getType(), RegionPersistentState.ID);
-        Map<String, RegionPersistentState.RegionData> regions = new HashMap<>();
-        for (Map.Entry<String, Region> entry : ID_TO_REGION.entrySet()) {
-            Region region = entry.getValue();
-            regions.put(entry.getKey(), new RegionPersistentState.RegionData(
-                    region.getDimension(),
-                    region.getChunkPositions(),
-                    region.getRate(),
-                    region.getTickDurationLimit(),
-                    region.getRegionPriority(),
-                    region.getState(),
-                    region.getRegionTime(),
-                    region.getFreezeStartTime(),
-                    region.getStepped(),
-                    true
-            ));
+        Map<String, RegionPersistentState.RegionData> regions = new HashMap<>(ID_TO_REGION.size());
+        for (Map.Entry<String, RegionTickManager> entry : ID_TO_REGION.entrySet()) {
+            regions.put(entry.getKey(), entry.getValue().toPersistentData());
         }
         state.replaceRegions(regions);
     }
@@ -302,7 +290,7 @@ public class RegionsManager {
         String currentId = getRegionId(key);
         if (currentId == null) return;
 
-        Region currentRegion = ID_TO_REGION.get(currentId);
+        RegionTickManager currentRegion = ID_TO_REGION.get(currentId);
 
         if (currentRegion != null) {
             currentRegion.removeChunk(chunkPos, world);
@@ -314,26 +302,29 @@ public class RegionsManager {
         CHUNK_TO_REGION.remove(key);
     }
 
-    private static void releaseControl(Region region) {
+    private static void releaseControl(RegionTickManager region) {
+        releaseControl(region, true);
+    }
+
+    private static void releaseControl(RegionTickManager region, boolean restoreWorldTime) {
         if (!region.isControlled()) return;
 
         ServerWorld world = getServer().getWorld(region.getDimension());
         if (world == null) return;
-        region.releaseRegion(world.getBlockTickScheduler(), world.getTime());
-        region.releaseRegion(world.getFluidTickScheduler(), world.getTime());
+        region.releaseRegion(world.getBlockTickScheduler(), world.getTime(), restoreWorldTime);
+        region.releaseRegion(world.getFluidTickScheduler(), world.getTime(), restoreWorldTime);
     }
 
-    private static void removeMappings(Region region) {
+    private static void removeMappings(RegionTickManager region) {
         CHUNK_TO_REGION.entrySet().removeIf(entry -> entry.getValue() == region);
         ControlledSchedulerRegistry.clearRegion(region);
     }
-
     private static String getRegionId(DimensionChunkKey key) {
-        Region region = CHUNK_TO_REGION.get(key);
+        RegionTickManager region = CHUNK_TO_REGION.get(key);
         return region == null ? null : region.getID();
     }
 
-    private static void syncRegion(String id, Region region) {
+    private static void syncRegion(String id, RegionTickManager region) {
         ServerWorld serverWorld = getServer().getWorld(region.getDimension());
         if (serverWorld == null) return;
 
@@ -341,7 +332,7 @@ public class RegionsManager {
         serverWorld.getPlayers().forEach(player -> ServerPlayNetworking.send(player, payload));
     }
 
-    private static RegionSyncPayload createSyncPayload(String id, Region region) {
+    private static RegionSyncPayload createSyncPayload(String id, RegionTickManager region) {
         return new RegionSyncPayload(id, region.getDimensionId(), region.getChunkPositions(),
                 region.getState(), region.getRate(), region.getVirtualTime());
     }

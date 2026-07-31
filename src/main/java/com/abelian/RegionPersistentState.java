@@ -1,6 +1,6 @@
 package com.abelian;
 
-import com.abelian.regionTick.Region;
+import com.abelian.regionTick.RegionTickManager;
 import net.minecraft.datafixer.DataFixTypes;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtElement;
@@ -102,7 +102,7 @@ public class RegionPersistentState extends PersistentState {
                     : regionNbt.contains("tickDurationLimit ") ? regionNbt.getDouble("tickDurationLimit ") : 10.0;
             int priority = regionNbt.contains("regionPriority") ? regionNbt.getInt("regionPriority") : 1;
             int regionTime = regionNbt.contains("regionTime") ? regionNbt.getInt("regionTime") : 0;
-            Region.RegionState regionState = readRegionState(regionNbt);
+            RegionTickManager.RegionState regionState = readRegionState(regionNbt);
             boolean hasTimeline = regionNbt.contains("freezeStartTime") && regionNbt.contains("stepped");
             long freezeStartTime = hasTimeline ? regionNbt.getLong("freezeStartTime") : 0L;
             int stepped = hasTimeline ? regionNbt.getInt("stepped") : 0;
@@ -111,13 +111,13 @@ public class RegionPersistentState extends PersistentState {
         return state;
     }
 
-    private static Region.RegionState readRegionState(NbtCompound regionNbt) {
-        if (!regionNbt.contains("state")) return Region.RegionState.RELEASED;
+    private static RegionTickManager.RegionState readRegionState(NbtCompound regionNbt) {
+        if (!regionNbt.contains("state")) return RegionTickManager.RegionState.RELEASED;
 
         try {
-            return Region.RegionState.valueOf(regionNbt.getString("state"));
+            return RegionTickManager.RegionState.valueOf(regionNbt.getString("state"));
         } catch (IllegalArgumentException ignored) {
-            return Region.RegionState.RELEASED;
+            return RegionTickManager.RegionState.RELEASED;
         }
     }
 
@@ -153,12 +153,14 @@ public class RegionPersistentState extends PersistentState {
     }
 
     public void replaceRegions(Map<String, RegionData> regions) {
+        if (this.regions.equals(regions)) return;
+
         this.regions.clear();
         this.regions.putAll(regions);
         markDirty();
     }
 
-    public record RegionData(RegistryKey<World> dimension, Set<Long> chunks, double rate, double tickDurationLimit , int regionPriority, Region.RegionState state, int regionTime, long freezeStartTime, int stepped, boolean hasTimeline) {
+    public record RegionData(RegistryKey<World> dimension, Set<Long> chunks, double rate, double tickDurationLimit , int regionPriority, RegionTickManager.RegionState state, int regionTime, long freezeStartTime, int stepped, boolean hasTimeline) {
         public RegionData {
             chunks = Set.copyOf(chunks);
         }

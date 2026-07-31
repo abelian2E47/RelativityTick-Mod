@@ -6,21 +6,21 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class ControlledSchedulerRegistry {
-    private static final Map<ChunkTickScheduler<?>, Region> SCHEDULER_TO_REGION = new ConcurrentHashMap<>();
+    private static final Map<ChunkTickScheduler<?>, RegionTickManager> SCHEDULER_TO_REGION = new ConcurrentHashMap<>();
 
-    public static void register(ChunkTickScheduler<?> scheduler, Region region) {
+    public static void register(ChunkTickScheduler<?> scheduler, RegionTickManager region) {
         SCHEDULER_TO_REGION.put(scheduler, region);
     }
 
-    public static void unregister(ChunkTickScheduler<?> scheduler, Region region) {
+    public static void unregister(ChunkTickScheduler<?> scheduler, RegionTickManager region) {
         SCHEDULER_TO_REGION.remove(scheduler, region);
     }
 
-    public static Region getRegion(ChunkTickScheduler<?> scheduler) {
+    public static RegionTickManager getRegion(ChunkTickScheduler<?> scheduler) {
         return SCHEDULER_TO_REGION.get(scheduler);
     }
 
-    public static void clearRegion(Region region) {
+    public static void clearRegion(RegionTickManager region) {
         SCHEDULER_TO_REGION.values().removeIf(value -> value == region);
     }
 }

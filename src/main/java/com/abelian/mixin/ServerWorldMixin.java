@@ -3,7 +3,7 @@ package com.abelian.mixin;
 import com.abelian.RelativityTickUtils;
 import com.abelian.ServerTickBridge;
 
-import com.abelian.regionTick.Region;
+import com.abelian.regionTick.RegionTickManager;
 import com.abelian.regionTick.RegionsManager;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.PlayerEntity;
@@ -24,7 +24,7 @@ public abstract class ServerWorldMixin  {
 
         ServerWorld world = (ServerWorld) entity.getWorld();
         long chunkPosLong = ChunkPos.toLong(entity.getBlockPos());
-        Region region = RegionsManager.getRegionByChunk(world, chunkPosLong);
+        RegionTickManager region = RegionsManager.getRegionByChunk(world, chunkPosLong);
         if (region != null && region.isControlled()) {
             ci.cancel();
         }
@@ -34,7 +34,7 @@ public abstract class ServerWorldMixin  {
     private void skipChunkTick(net.minecraft.world.chunk.WorldChunk chunk, int randomTickSpeed, CallbackInfo ci) {
         ServerWorld serverWorld = RelativityTickUtils.getServer().getWorld(chunk.getWorld().getRegistryKey());
         if (com.abelian.RegionTickContext.getTime(serverWorld) != null) return;
-        Region region = RegionsManager.getRegionByChunk(serverWorld, chunk.getPos().toLong());
+        RegionTickManager region = RegionsManager.getRegionByChunk(serverWorld, chunk.getPos().toLong());
         if (region != null && region.isControlled()) {
             ci.cancel();
         }
