@@ -220,15 +220,15 @@ public class RegionTickManager {
     }
 
     private void tickEntities(ServerWorld world) {
-        ((ServerWorldAccessor) world).getEntityList().forEach(entity -> {
-            if (entity instanceof PlayerEntity || entity.isRemoved()) return;
-            if (!chunkPositions.contains(entity.getChunkPos().toLong())) return;
-            if (!world.shouldTickEntity(entity.getBlockPos())) return;
-            if (!ServerTickBridge.claimEntity(entity, this)) return;
+        for (Entity entity : ServerTickBridge.getOrderedEntitySnapshot(world)) {
+            if (entity instanceof PlayerEntity || entity.isRemoved()) continue;
+            if (!chunkPositions.contains(entity.getChunkPos().toLong())) continue;
+            if (!world.shouldTickEntity(entity.getBlockPos())) continue;
+            if (!ServerTickBridge.claimEntity(entity, this)) continue;
             if (!isPassenger(entity)) {
                 tickEntity(world, entity);
             }
-        });
+        }
     }
 
     private static boolean isPassenger(Entity entity) {
@@ -257,17 +257,17 @@ public class RegionTickManager {
 
     public List<EntityStateRecord> collectEntityStates(ServerWorld world) {
         List<EntityStateRecord> entityStates = new ArrayList<>();
-        if (isControlled()) {
-            ((ServerWorldAccessor) world).getEntityList().forEach(entity -> {
-                if (entity instanceof PlayerEntity || entity.isRemoved()) return;
-                if (!chunkPositions.contains(entity.getChunkPos().toLong())) return;
-                if (!world.shouldTickEntity(entity.getBlockPos())) return;
-                entityStates.add(new EntityStateRecord(
-                        entity.getId(), entity.getX(), entity.getY(), entity.getZ(),
-                        entity.getYaw(), entity.getPitch(),
-                        entity.getVelocity().x, entity.getVelocity().y, entity.getVelocity().z
-                ));
-            });
+        if (!isControlled()) return entityStates;
+
+        for (Entity entity : ServerTickBridge.getOrderedEntitySnapshot(world)) {
+            if (entity instanceof PlayerEntity || entity.isRemoved()) continue;
+            if (!chunkPositions.contains(entity.getChunkPos().toLong())) continue;
+            if (!world.shouldTickEntity(entity.getBlockPos())) continue;
+            entityStates.add(new EntityStateRecord(
+                    entity.getId(), entity.getX(), entity.getY(), entity.getZ(),
+                    entity.getYaw(), entity.getPitch(),
+                    entity.getVelocity().x, entity.getVelocity().y, entity.getVelocity().z
+            ));
         }
         return entityStates;
     }

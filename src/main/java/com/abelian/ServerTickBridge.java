@@ -1,6 +1,10 @@
 package com.abelian;
 
 import com.abelian.mixin.ServerChunkManagerAccessor;
+import com.abelian.mixin.ServerWorldAccessor;
+import net.minecraft.world.EntityList;
+import java.util.ArrayList;
+import java.util.List;
 import com.abelian.regionTick.RegionTickManager;
 import net.minecraft.entity.Entity;
 import net.minecraft.server.world.ServerWorld;
@@ -16,6 +20,8 @@ public class ServerTickBridge {
             ThreadLocal.withInitial(IdentityHashMap::new);
     private static final ThreadLocal<Map<ServerWorld, SpawnHelper.Info>> SPAWN_INFOS =
             ThreadLocal.withInitial(IdentityHashMap::new);
+    private static final ThreadLocal<IdentityHashMap<EntityList, EntityListState>> ENTITY_LIST_STATES =
+            ThreadLocal.withInitial(IdentityHashMap::new);
 
     public static boolean isCustomTickInProgress() {
         return CUSTOM_TICK_IN_PROGRESS.get();
@@ -28,6 +34,40 @@ public class ServerTickBridge {
     public static void beginRegionTickBatch() {
         REGION_TICK_OWNERS.get().clear();
         SPAWN_INFOS.get().clear();
+        ENTITY_LIST_STATES.get().clear();
+    }
+
+    public static void markEntityListMutated(EntityList entityList) {
+        EntityListState state = ENTITY_LIST_STATES.get().get(entityList);
+        if (state != null) {
+            state.revision++;
+        }
+    }
+
+    public static List<Entity> getOrderedEntitySnapshot(ServerWorld world) {
+        EntityList entityList = ((ServerWorldAccessor) world).getEntityList();
+        IdentityHashMap<EntityList, EntityListState> states = ENTITY_LIST_STATES.get();
+        EntityListState state = states.get(entityList);
+        if (state == null) {
+            state = new EntityListState();
+            states.put(entityList, state);
+        }
+
+        if (state.snapshot != null && state.snapshotRevision == state.revision) {
+            return state.snapshot;
+        }
+
+        List<Entity> snapshot = new ArrayList<>();
+        entityList.forEach(snapshot::add);
+        state.snapshot = snapshot;
+        state.snapshotRevision = state.revision;
+        return snapshot;
+    }
+
+    private static final class EntityListState {
+        private long revision;
+        private long snapshotRevision = Long.MIN_VALUE;
+        private List<Entity> snapshot;
     }
 
     public static boolean claimEntity(Entity entity, RegionTickManager region) {
