@@ -10,7 +10,7 @@ import java.util.Set;
 
 public class ClientRegion {
     private final String id;
-    private final String dimension;
+    private String dimension;
     private final Set<Long> chunkPositions;
 
     private RegionTickManager.RegionState regionState;
@@ -29,6 +29,7 @@ public class ClientRegion {
     }
 
     public void updateRegionState(RegionSyncPayload payload) {
+        this.dimension = payload.dimension();
         this.regionState = payload.state();
         this.rate = payload.rate();
         this.virtualTime = payload.virtualTime();

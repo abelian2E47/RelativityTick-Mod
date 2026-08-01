@@ -20,11 +20,10 @@ import java.util.Set;
 
 
 public class RelativityTickClient implements ClientModInitializer {
-	public enum SelectionState {
-		OFF,
-		SELECTING_CHUNKS,
-		AWAITING_CONFIRM
-	}
+    public enum SelectionState {
+        OFF,
+        SELECTING_CHUNKS
+    }
 
 	public static SelectionState currentState = SelectionState.OFF;
 	private static KeyBinding startSelectingKeyBinding;
@@ -79,11 +78,7 @@ public class RelativityTickClient implements ClientModInitializer {
 			}
 
             while (startSelectingKeyBinding.wasPressed()) {
-                if (currentState == SelectionState.OFF || currentState == SelectionState.AWAITING_CONFIRM) {
-                    selectChunksMode();
-                } else if (currentState == SelectionState.SELECTING_CHUNKS) {
-                    confirmChunksSelection();
-                }
+                selectChunksMode();
             }
         });
 
@@ -91,21 +86,17 @@ public class RelativityTickClient implements ClientModInitializer {
 	}
 
     public static void selectChunksMode() {
-        if (currentState == SelectionState.OFF || currentState == SelectionState.AWAITING_CONFIRM) {
+        if (currentState == SelectionState.OFF) {
             currentState = SelectionState.SELECTING_CHUNKS;
             if (MinecraftClient.getInstance().player != null) {
                 MinecraftClient.getInstance().player.sendMessage(
                         Text.translatable("relativitytick.selection.mode_activated").formatted(Formatting.GREEN), false);
             }
-        }
-    }
-
-    public static void confirmChunksSelection() {
-        if (currentState == SelectionState.SELECTING_CHUNKS) {
-            currentState = SelectionState.AWAITING_CONFIRM;
+        } else {
+            currentState = SelectionState.OFF;
             if (MinecraftClient.getInstance().player != null) {
                 MinecraftClient.getInstance().player.sendMessage(
-                        Text.translatable("relativitytick.selection.completed").formatted(Formatting.YELLOW), false);
+                        Text.translatable("relativitytick.selection.mode_deactivated").formatted(Formatting.YELLOW), false);
             }
         }
     }

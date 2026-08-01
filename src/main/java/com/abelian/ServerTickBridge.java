@@ -6,6 +6,7 @@ import com.abelian.mixin.WorldAccessor;
 import com.abelian.regionTick.RegionTickManager;
 import net.minecraft.entity.Entity;
 import net.minecraft.server.world.ServerWorld;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
 import net.minecraft.world.EntityList;
 import net.minecraft.world.SpawnDensityCapper;
@@ -133,12 +134,18 @@ public class ServerTickBridge {
             int order = 0;
             while (iterator.hasNext()) {
                 BlockEntityTickInvoker invoker = iterator.next();
-                if (invoker.isRemoved()) {
+                if (invoker == null || invoker.isRemoved()) {
                     iterator.remove();
                     continue;
                 }
 
-                long chunkPos = ChunkPos.toLong(invoker.getPos());
+                BlockPos pos = invoker.getPos();
+                if (pos == null) {
+                    iterator.remove();
+                    continue;
+                }
+
+                long chunkPos = ChunkPos.toLong(pos);
                 byChunk.computeIfAbsent(chunkPos, ignored -> new ArrayList<>())
                         .add(new IndexedBlockEntityTicker(invoker, order++));
             }

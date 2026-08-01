@@ -17,6 +17,7 @@ import com.abelian.network.SelectionOperationPayload;
 import java.util.HashSet;
 import java.util.Set;
 
+
 public class ClientCommand {
     public static void register(CommandDispatcher<ServerCommandSource> dispatcher, CommandRegistryAccess registryAccess, CommandManager.RegistrationEnvironment environment) {
         dispatcher.register(CommandManager.literal("regionManager")
@@ -42,9 +43,6 @@ public class ClientCommand {
                         .then(CommandManager.literal("select")
                                 .executes(context -> select(context.getSource()))
                         )
-                        .then(CommandManager.literal("confirm")
-                                .executes(context -> confirm(context.getSource()))
-                        )
                 )
         );
     }
@@ -54,10 +52,6 @@ public class ClientCommand {
         return 1;
     }
 
-    private static int confirm(ServerCommandSource source) {
-        RelativityTickClient.confirmChunksSelection();
-        return 1;
-    }
 
     private static int create(ServerCommandSource source, String id) {
         if (RegionsManager.getRegion(id) != null) {
@@ -65,22 +59,19 @@ public class ClientCommand {
             return 0;
         }
 
-        if (RelativityTickClient.currentState == RelativityTickClient.SelectionState.AWAITING_CONFIRM && !RelativityTickClient.selectChunks.isEmpty()) {
+        if (!RelativityTickClient.selectChunks.isEmpty()) {
             Set<Long> chunksToSend = new HashSet<>(RelativityTickClient.selectChunks);
-
             ClientPlayNetworking.send(new SelectionOperationPayload(chunksToSend, id));
 
             RelativityTickClient.selectChunks.clear();
             RelativityTickClient.currentState = RelativityTickClient.SelectionState.OFF;
-
             source.sendFeedback(() -> Text.translatable("relativitytick.command.client.region_submitted",
                     Text.literal(id).formatted(Formatting.AQUA)), false);
-
             return 1;
-        } else {
-            source.sendError(Text.translatable("relativitytick.command.client.error.no_region_selection"));
-            return 0;
         }
+
+        source.sendError(Text.translatable("relativitytick.command.client.error.no_region_selection"));
+        return 0;
     }
 
     private static int addChunk(ServerCommandSource source, String id) {
@@ -90,7 +81,6 @@ public class ClientCommand {
             int added = RegionsManager.addChunksToRegion(id, chunksToAdd, world);
             RelativityTickClient.selectChunks.clear();
             RelativityTickClient.currentState = RelativityTickClient.SelectionState.OFF;
-
             source.sendFeedback(() -> Text.translatable("relativitytick.command.client.selected_chunks_added",
                     Text.literal(String.valueOf(added)).formatted(Formatting.GOLD),
                     Text.literal(id).formatted(Formatting.AQUA)), false);
@@ -99,7 +89,6 @@ public class ClientCommand {
 
         ChunkPos chunkPos = getSourceChunkPos(source);
         RegionsManager.addChunkToRegion(id, chunkPos.toLong(), world);
-
         source.sendFeedback(() -> Text.translatable("relativitytick.command.client.chunk_added",
                 Text.literal(chunkPos.x + " " + chunkPos.z).formatted(Formatting.GOLD),
                 Text.literal(id).formatted(Formatting.AQUA)), false);

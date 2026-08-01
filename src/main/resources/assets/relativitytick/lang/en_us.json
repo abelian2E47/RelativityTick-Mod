@@ -49,5 +49,5 @@
   "relativitytick.selection.chunk_removed": "remove chunk: %s %s",
   "relativitytick.selection.chunk_not_selected": "The region is not selected: %s %s",
   "relativitytick.selection.mode_activated": "Selection mode: Activated",
-  "relativitytick.selection.completed": "Selection completed"
+  "relativitytick.selection.mode_deactivated": "Selection mode: Deactivated"
 }

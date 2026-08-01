@@ -313,12 +313,16 @@ public class ServerCommands {
         if (rcc.isInvalid()) return 0;
         boolean wasControlled = rcc.manager.isControlled();
         boolean wasRunning = rcc.manager.isRunning();
+
+        rcc.manager.setRate(rate);
         if (!wasControlled) {
             takeOver(rcc);
-            toggleFreezeRegion(rcc);
+            rcc.manager.setAccumulator(1.0);
+            rcc.manager.setState(RegionState.RUNNING);
+        } else {
+            rcc.manager.setState(wasRunning ? RegionState.RUNNING : RegionState.FROZEN);
         }
-        rcc.manager.setRate(rate);
-        rcc.manager.setState(wasRunning ? RegionState.RUNNING : RegionState.FROZEN);
+
         RegionsManager.savePersistentState();
         //重置TPS统计缓存
         rcc.manager.resetRecentStepCount(rate);
@@ -350,11 +354,10 @@ public class ServerCommands {
 
     private static int executeRemove(RegionCommandContext rcc) {
         if (rcc.isInvalid()) return 0;
-        if (rcc.manager.isControlled()) release(rcc);
         RegionsManager.removeRegion(rcc.id);
-        RegionSyncPayload payload = new RegionSyncPayload(rcc.id, rcc.manager.getDimensionId(), java.util.Collections.emptySet(), RegionTickManager.RegionState.RELEASED, 20, rcc.manager.getVirtualTime());
 
-        rcc.source.sendFeedback(() -> Text.translatable("relativitytick.command.region.removed", Text.literal(rcc.id).formatted(Formatting.GOLD)), false);
+        rcc.source.sendFeedback(() -> Text.translatable("relativitytick.command.region.removed",
+                Text.literal(rcc.id).formatted(Formatting.GOLD)), false);
         return 1;
     }
 

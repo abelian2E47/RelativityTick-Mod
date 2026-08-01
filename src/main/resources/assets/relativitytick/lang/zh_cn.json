@@ -49,5 +49,5 @@
   "relativitytick.selection.chunk_removed": "已移除区块：%s %s",
   "relativitytick.selection.chunk_not_selected": "该区块未被选中：%s %s",
   "relativitytick.selection.mode_activated": "选择模式：已开启",
-  "relativitytick.selection.completed": "选择完成"
+  "relativitytick.selection.mode_deactivated": "选择模式：已关闭"
 }

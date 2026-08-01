@@ -102,24 +102,37 @@ public class RegionsManager {
 
     public static void removeChunkFromRegion(String id, long chunkPos, ServerWorld world) {
         RegionTickManager region = ID_TO_REGION.get(id);
+        if (region == null || !region.isInWorld(world)) return;
 
         DimensionChunkKey key = key(world, chunkPos);
-        CHUNK_TO_REGION.remove(key);
+        if (CHUNK_TO_REGION.get(key) != region) return;
+        if (!region.removeChunk(chunkPos, world)) return;
+
+        CHUNK_TO_REGION.remove(key, region);
         if (region.getChunkPositions().isEmpty()) {
-            ID_TO_REGION.remove(id);
+            ID_TO_REGION.remove(id, region);
+            removeMappings(region);
+            regionPriorityOrderDirty = true;
         }
-        regionPriorityOrderDirty = true;
+
         syncRegion(id, region);
         savePersistentState();
     }
 
     public static void removeRegion(String id) {
-        RegionTickManager region = ID_TO_REGION.remove(id);
+        RegionTickManager region = ID_TO_REGION.get(id);
+        if (region == null) return;
+
+        releaseControl(region);
+        region.setState(RegionTickManager.RegionState.RELEASED);
+        region.setPendingSteps(0);
+        region.setAccumulator(0.0);
+
+        if (!ID_TO_REGION.remove(id, region)) return;
         regionPriorityOrderDirty = true;
-        if (region != null) {
-            removeMappings(region);
-            savePersistentState();
-        }
+        removeMappings(region);
+        syncRegionRemoval(id, region);
+        savePersistentState();
     }
 
     public static RegionTickManager getRegionByChunk(ServerWorld world, long chunkPos) {
@@ -325,11 +338,22 @@ public class RegionsManager {
     }
 
     private static void syncRegion(String id, RegionTickManager region) {
-        ServerWorld serverWorld = getServer().getWorld(region.getDimension());
-        if (serverWorld == null) return;
-
         RegionSyncPayload payload = createSyncPayload(id, region);
-        serverWorld.getPlayers().forEach(player -> ServerPlayNetworking.send(player, payload));
+        getServer().getPlayerManager().getPlayerList()
+                .forEach(player -> ServerPlayNetworking.send(player, payload));
+    }
+
+    private static void syncRegionRemoval(String id, RegionTickManager region) {
+        RegionSyncPayload payload = new RegionSyncPayload(
+                id,
+                region.getDimensionId(),
+                Set.of(),
+                RegionTickManager.RegionState.RELEASED,
+                region.getRate(),
+                region.getVirtualTime()
+        );
+        getServer().getPlayerManager().getPlayerList()
+                .forEach(player -> ServerPlayNetworking.send(player, payload));
     }
 
     private static RegionSyncPayload createSyncPayload(String id, RegionTickManager region) {
