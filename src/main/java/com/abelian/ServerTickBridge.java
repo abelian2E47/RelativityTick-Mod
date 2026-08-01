@@ -125,11 +125,13 @@ public class ServerTickBridge {
         private static final Comparator<BlockEntityTickerCursor> CURSOR_COMPARATOR =
                 Comparator.comparingInt(cursor -> cursor.current().order());
         private final Map<Long, List<IndexedBlockEntityTicker>> byChunk = new HashMap<>();
+        private final List<IndexedBlockEntityTicker> unindexedTickers = new ArrayList<>();
         private final PriorityQueue<BlockEntityTickerCursor> cursors = new PriorityQueue<>(CURSOR_COMPARATOR);
         private boolean dirty = true;
 
         private void rebuild(List<BlockEntityTickInvoker> tickers) {
             byChunk.clear();
+            unindexedTickers.clear();
             Iterator<BlockEntityTickInvoker> iterator = tickers.iterator();
             int order = 0;
             while (iterator.hasNext()) {
@@ -140,19 +142,50 @@ public class ServerTickBridge {
                 }
 
                 BlockPos pos = invoker.getPos();
+                IndexedBlockEntityTicker indexedTicker = new IndexedBlockEntityTicker(invoker, order++);
                 if (pos == null) {
-                    iterator.remove();
+                    // Lithium keeps sleeping tickers in the world's list. They become indexable again when woken.
+                    unindexedTickers.add(indexedTicker);
                     continue;
                 }
 
-                long chunkPos = ChunkPos.toLong(pos);
-                byChunk.computeIfAbsent(chunkPos, ignored -> new ArrayList<>())
-                        .add(new IndexedBlockEntityTicker(invoker, order++));
+                addTicker(pos, indexedTicker);
             }
             dirty = false;
         }
 
+        private void refreshUnindexedTickers() {
+            Iterator<IndexedBlockEntityTicker> iterator = unindexedTickers.iterator();
+            while (iterator.hasNext()) {
+                IndexedBlockEntityTicker indexedTicker = iterator.next();
+                BlockEntityTickInvoker invoker = indexedTicker.invoker();
+                if (invoker.isRemoved()) {
+                    iterator.remove();
+                    continue;
+                }
+
+                BlockPos pos = invoker.getPos();
+                if (pos == null) {
+                    continue;
+                }
+
+                addTicker(pos, indexedTicker);
+                iterator.remove();
+            }
+        }
+
+        private void addTicker(BlockPos pos, IndexedBlockEntityTicker ticker) {
+            long chunkPos = ChunkPos.toLong(pos);
+            List<IndexedBlockEntityTicker> tickers = byChunk.computeIfAbsent(chunkPos, ignored -> new ArrayList<>());
+            int insertion = tickers.size();
+            while (insertion > 0 && tickers.get(insertion - 1).order() > ticker.order()) {
+                insertion--;
+            }
+            tickers.add(insertion, ticker);
+        }
+
         private void forEach(Set<Long> chunkPositions, Consumer<BlockEntityTickInvoker> action) {
+            refreshUnindexedTickers();
             cursors.clear();
             try {
                 for (long chunkPos : chunkPositions) {

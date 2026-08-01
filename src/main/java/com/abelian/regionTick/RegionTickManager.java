@@ -193,7 +193,12 @@ public class RegionTickManager {
     private void tickBlockEntities(ServerWorld world) {
         boolean shouldTick = world.getTickManager().shouldTick();
         ServerTickBridge.forEachBlockEntityTicker(world, chunkPositions, invoker -> {
-            if (shouldTick && world.shouldTickBlockPos(invoker.getPos())) {
+            if (!shouldTick || invoker.isRemoved()) return;
+
+            BlockPos pos = invoker.getPos();
+            if (pos == null || !chunkPositions.contains(ChunkPos.toLong(pos))) return;
+
+            if (world.shouldTickBlockPos(pos)) {
                 invoker.tick();
             }
         });
