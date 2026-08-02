@@ -248,7 +248,7 @@ public class RegionsManager {
 
     public static void loadPersistentState() {
         if (loadedFromPersistentState || getServer() == null || getServer().getOverworld() == null) return;
-        RegionPersistentState state = getServer().getOverworld().getPersistentStateManager().getOrCreate(RegionPersistentState.getType(), RegionPersistentState.ID);
+        RegionPersistentState state = getServer().getOverworld().getPersistentStateManager().getOrCreate(RegionPersistentState.getType());
         ID_TO_REGION.clear();
         CHUNK_TO_REGION.clear();
 
@@ -282,7 +282,7 @@ public class RegionsManager {
 
     public static void savePersistentState() {
         if (getServer() == null || getServer().getOverworld() == null) return;
-        RegionPersistentState state = getServer().getOverworld().getPersistentStateManager().getOrCreate(RegionPersistentState.getType(), RegionPersistentState.ID);
+        RegionPersistentState state = getServer().getOverworld().getPersistentStateManager().getOrCreate(RegionPersistentState.getType());
         Map<String, RegionPersistentState.RegionData> regions = new HashMap<>(ID_TO_REGION.size());
         for (Map.Entry<String, RegionTickManager> entry : ID_TO_REGION.entrySet()) {
             regions.put(entry.getKey(), entry.getValue().toPersistentData());

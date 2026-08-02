@@ -4,6 +4,7 @@ import com.abelian.client.clientRegionTick.ClientRegion;
 import com.abelian.client.clientRegionTick.ClientRegionManager;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.*;
+import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.util.profiler.Profiler;
@@ -28,8 +29,7 @@ public abstract class WorldRendererMixin {
             Frustum frustum,
             Camera camera,
             Matrix4f positionMatrix,
-            Matrix4f projectionMatrix,
-            Fog fog,
+            GpuBufferSlice fog,
             boolean renderBlockOutline,
             boolean renderEntityOutlines,
             RenderTickCounter renderTickCounter,

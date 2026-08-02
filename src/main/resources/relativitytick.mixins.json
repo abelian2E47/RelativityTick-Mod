@@ -7,8 +7,6 @@
     "EntityListMixin",
     "BlockEntityMixin",
     "EntityMixin",
-    "ServerChunkLoadingManagerAccessor",
-    "ServerChunkManagerAccessor",
     "ServerEntityManagerAccessor",
     "ServerWorldAccessor",
     "ServerWorldBlockEventMixin",

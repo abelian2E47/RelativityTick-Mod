@@ -1,16 +1,14 @@
 package com.abelian;
 
-import com.abelian.mixin.ServerChunkManagerAccessor;
 import com.abelian.mixin.ServerWorldAccessor;
 import com.abelian.mixin.WorldAccessor;
+import net.minecraft.world.SpawnHelper;
 import com.abelian.regionTick.RegionTickManager;
 import net.minecraft.entity.Entity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
 import net.minecraft.world.EntityList;
-import net.minecraft.world.SpawnDensityCapper;
-import net.minecraft.world.SpawnHelper;
 import net.minecraft.world.World;
 import net.minecraft.world.chunk.BlockEntityTickInvoker;
 
@@ -241,12 +239,10 @@ public class ServerTickBridge {
     }
 
     private static SpawnHelper.Info createSpawnInfo(ServerWorld world) {
-        ServerChunkManagerAccessor managerAccessor = (ServerChunkManagerAccessor) world.getChunkManager();
-        return SpawnHelper.setupSpawn(
-                managerAccessor.getTicketManager().getTickedChunkCount(),
-                world.iterateEntities(),
-                managerAccessor::invokeIfChunkLoaded,
-                new SpawnDensityCapper(managerAccessor.getChunkLoadingManager())
-        );
+        SpawnHelper.Info info = world.getChunkManager().getSpawnInfo();
+        if (info == null) {
+            throw new IllegalStateException("Spawn info is unavailable outside chunk ticking");
+        }
+        return info;
     }
 }

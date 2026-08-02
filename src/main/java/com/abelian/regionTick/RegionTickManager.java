@@ -6,12 +6,8 @@ import com.abelian.RegionTickContext;
 import com.abelian.ServerTickBridge;
 import com.abelian.mixin.WorldAccessor;
 import net.minecraft.server.world.ServerChunkManager;
-import net.minecraft.world.chunk.BlockEntityTickInvoker;
-import java.util.Iterator;
 
 import net.minecraft.util.math.ChunkPos;
-import com.abelian.mixin.ServerChunkManagerAccessor;
-import com.abelian.mixin.ServerChunkLoadingManagerAccessor;
 import com.abelian.mixin.ServerWorldAccessor;
 import com.abelian.network.EntityStateRecord;
 import net.minecraft.block.Block;
@@ -208,7 +204,7 @@ public class RegionTickManager {
         for (Entity entity : ServerTickBridge.getOrderedEntitySnapshot(world)) {
             if (entity instanceof PlayerEntity || entity.isRemoved()) continue;
             if (!chunkPositions.contains(entity.getChunkPos().toLong())) continue;
-            if (!world.shouldTickEntity(entity.getBlockPos())) continue;
+            if (!world.shouldTickEntityAt(entity.getBlockPos())) continue;
             if (!ServerTickBridge.claimEntity(entity, this)) continue;
             if (!isPassenger(entity)) {
                 tickEntity(world, entity);
@@ -247,7 +243,7 @@ public class RegionTickManager {
         for (Entity entity : ServerTickBridge.getOrderedEntitySnapshot(world)) {
             if (entity instanceof PlayerEntity || entity.isRemoved()) continue;
             if (!chunkPositions.contains(entity.getChunkPos().toLong())) continue;
-            if (!world.shouldTickEntity(entity.getBlockPos())) continue;
+            if (!world.shouldTickEntityAt(entity.getBlockPos())) continue;
             entityStates.add(new EntityStateRecord(
                     entity.getId(), entity.getX(), entity.getY(), entity.getZ(),
                     entity.getYaw(), entity.getPitch(),
@@ -266,18 +262,14 @@ public class RegionTickManager {
     private void tickChunkWorld(ServerWorld world) {
         if (!RelativityTickConfig.isChunkTickEnabled()) return;
 
-        ServerChunkManagerAccessor managerAccessor = (ServerChunkManagerAccessor) world.getChunkManager();
-        ServerChunkLoadingManagerAccessor loadingAccessor =
-                (ServerChunkLoadingManagerAccessor) managerAccessor.getChunkLoadingManager();
-
         SpawnHelper.Info spawnInfo = ServerTickBridge.getSpawnInfo(world);
         boolean doMobSpawning = world.getGameRules().getBoolean(net.minecraft.world.GameRules.DO_MOB_SPAWNING);
         int randomTickSpeed = world.getGameRules().getInt(net.minecraft.world.GameRules.RANDOM_TICK_SPEED);
         List<SpawnGroup> spawnGroups = doMobSpawning
                 ? SpawnHelper.collectSpawnableGroups(
                         spawnInfo,
-                        managerAccessor.getSpawnAnimals(),
-                        managerAccessor.getSpawnMonsters(),
+                        true,
+                        true,
                         world.getTime() % 400L == 0L
                 )
                 : List.of();
@@ -289,7 +281,7 @@ public class RegionTickManager {
 
             WorldChunk chunk = chunkManager.getWorldChunk(chunkPos.x, chunkPos.z);
             if (chunk == null) continue;
-            if (!world.shouldTick(chunkPos)) continue;
+            if (!world.shouldTickTestAt(chunkPos)) continue;
             //区块时间
             chunk.increaseInhabitedTime(1L);
             //生成逻辑

@@ -86,7 +86,7 @@ public class RelativityTick implements ModInitializer {
                     context.server().execute(() -> {
                         Set<Long> chunkPositions = payload.chunkPositions();
                         String id = payload.id();
-                        RegionsManager.createRegion(id, chunkPositions, context.player().getServerWorld());
+                        RegionsManager.createRegion(id, chunkPositions, context.player().getWorld());
                     });
                 });
 
