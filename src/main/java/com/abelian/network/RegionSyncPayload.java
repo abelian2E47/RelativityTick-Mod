@@ -24,7 +24,7 @@ public record RegionSyncPayload(String id, String dimension, Set<Long> chunkPosi
             PacketCodecs.STRING,
             RegionSyncPayload::dimension,
 
-            PacketCodecs.collection(HashSet::new, PacketCodecs.LONG),
+            PacketCodecs.collection(HashSet::new, PacketCodecs.VAR_LONG),
             RegionSyncPayload::chunkPositions,
 
             STATE_CODEC,
@@ -33,7 +33,7 @@ public record RegionSyncPayload(String id, String dimension, Set<Long> chunkPosi
             PacketCodecs.DOUBLE,
             RegionSyncPayload::rate,
 
-            PacketCodecs.LONG,
+            PacketCodecs.VAR_LONG,
             RegionSyncPayload::virtualTime,
 
             RegionSyncPayload::new

@@ -9,6 +9,6 @@ import java.util.function.Consumer;
 
 @Mixin(ServerChunkLoadingManager.class)
 public interface ServerChunkLoadingManagerAccessor {
-    @Invoker("forEachTickedChunk")
-    void invokeForEachTickedChunk(Consumer<ChunkHolder> consumer);
+    @Invoker("entryIterator")
+    Iterable<ChunkHolder> invokeEntryIterator();
 }

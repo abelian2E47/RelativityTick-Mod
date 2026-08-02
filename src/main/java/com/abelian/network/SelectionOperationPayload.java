@@ -18,7 +18,7 @@ public record SelectionOperationPayload(Set<Long> chunkPositions, String id) imp
     }
 
     public static final PacketCodec<PacketByteBuf, SelectionOperationPayload> CODEC = PacketCodec.tuple(
-            PacketCodecs.collection(HashSet::new, PacketCodecs.LONG),
+            PacketCodecs.collection(HashSet::new, PacketCodecs.VAR_LONG),
             SelectionOperationPayload::chunkPositions,
             PacketCodecs.STRING,
             SelectionOperationPayload::id,

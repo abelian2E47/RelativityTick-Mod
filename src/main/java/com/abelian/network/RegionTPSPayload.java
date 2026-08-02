@@ -23,7 +23,7 @@ public record RegionTPSPayload(String regionID, float regionTickDuration, double
             PacketCodecs.DOUBLE,
             RegionTPSPayload::TPS,
 
-            PacketCodecs.LONG,
+            PacketCodecs.VAR_LONG,
             RegionTPSPayload::virtualTime,
 
             RegionTPSPayload::new

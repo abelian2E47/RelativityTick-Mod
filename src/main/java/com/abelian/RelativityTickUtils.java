@@ -44,7 +44,7 @@ public class RelativityTickUtils {
         BlockState blockState = world.getBlockState(pos);
         FluidState fluidState = blockState.getFluidState();
         if (fluidState.isOf(fluid)) {
-            fluidState.onScheduledTick(world, pos, blockState);
+            fluidState.onScheduledTick(world, pos);
         }
     }
 

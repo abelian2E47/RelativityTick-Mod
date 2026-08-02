@@ -18,8 +18,9 @@ import java.util.List;
 public abstract class SpawnHelperMixin {
     @Inject(method = "spawn", at = @At("HEAD"), cancellable = true)
     private static void skipSpawning(ServerWorld world, WorldChunk chunk,
-                                                     SpawnHelper.Info info, List<SpawnGroup> groups,
-                                                     CallbackInfo ci) {
+                                     SpawnHelper.Info info, boolean spawnAnimals,
+                                     boolean spawnMonsters, boolean rare,
+                                     CallbackInfo ci) {
         if (RegionTickContext.getTime(world) != null) return;
         RegionTickManager region = RegionsManager.getRegionByChunk(world, chunk.getPos().toLong());
         if (region != null && region.isControlled()) {

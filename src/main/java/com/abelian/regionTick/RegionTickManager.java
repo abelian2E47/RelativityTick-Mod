@@ -267,20 +267,10 @@ public class RegionTickManager {
         if (!RelativityTickConfig.isChunkTickEnabled()) return;
 
         ServerChunkManagerAccessor managerAccessor = (ServerChunkManagerAccessor) world.getChunkManager();
-        ServerChunkLoadingManagerAccessor loadingAccessor =
-                (ServerChunkLoadingManagerAccessor) managerAccessor.getChunkLoadingManager();
 
         SpawnHelper.Info spawnInfo = ServerTickBridge.getSpawnInfo(world);
         boolean doMobSpawning = world.getGameRules().getBoolean(net.minecraft.world.GameRules.DO_MOB_SPAWNING);
         int randomTickSpeed = world.getGameRules().getInt(net.minecraft.world.GameRules.RANDOM_TICK_SPEED);
-        List<SpawnGroup> spawnGroups = doMobSpawning
-                ? SpawnHelper.collectSpawnableGroups(
-                        spawnInfo,
-                        managerAccessor.getSpawnAnimals(),
-                        managerAccessor.getSpawnMonsters(),
-                        world.getTime() % 400L == 0L
-                )
-                : List.of();
 
         ServerChunkManager chunkManager = world.getChunkManager();
 
@@ -293,9 +283,11 @@ public class RegionTickManager {
             //区块时间
             chunk.increaseInhabitedTime(1L);
             //生成逻辑
-            if (!spawnGroups.isEmpty()
-                    && world.getWorldBorder().contains(chunkPos)) {
-                SpawnHelper.spawn(world, chunk, spawnInfo, spawnGroups);
+            if (doMobSpawning && world.getWorldBorder().contains(chunkPos)) {
+                SpawnHelper.spawn(world, chunk, spawnInfo,
+                        managerAccessor.getSpawnAnimals(),
+                        managerAccessor.getSpawnMonsters(),
+                        world.getTime() % 400L == 0L);
             }
             //random tick
             if (world.shouldTickBlocksInChunk(chunkPosLong)) {

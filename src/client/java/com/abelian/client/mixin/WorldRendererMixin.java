@@ -20,20 +20,18 @@ import static com.abelian.client.RelativityTickClient.selectChunks;
 @Mixin(WorldRenderer.class)
 public abstract class WorldRendererMixin {
     @Inject(
-            method = "renderMain",
-            at = @At(value = "TAIL")
+            method = "render",
+            at = @At("TAIL")
     )
     private void renderRegionBoundaries(
-            FrameGraphBuilder frameGraphBuilder,
-            Frustum frustum,
+            RenderTickCounter tickCounter,
+            boolean tick,
             Camera camera,
+            GameRenderer gameRenderer,
+            LightmapTextureManager lightmapTextureManager,
             Matrix4f positionMatrix,
             Matrix4f projectionMatrix,
-            Fog fog,
-            boolean renderBlockOutline,
-            boolean renderEntityOutlines,
-            RenderTickCounter renderTickCounter,
-            Profiler profiler, CallbackInfo ci) {
+            CallbackInfo ci) {
         if (selectChunks.isEmpty() && ClientRegionManager.getRegions().isEmpty()) return;
 
         Vec3d camPos = camera.getPos();

@@ -17,7 +17,7 @@ public record RegionTimePayload(String regionId, long virtualTime) implements Cu
     public static final PacketCodec<RegistryByteBuf, RegionTimePayload> CODEC = PacketCodec.tuple(
             PacketCodecs.STRING,
             RegionTimePayload::regionId,
-            PacketCodecs.LONG,
+            PacketCodecs.VAR_LONG,
             RegionTimePayload::virtualTime,
             RegionTimePayload::new
     );
