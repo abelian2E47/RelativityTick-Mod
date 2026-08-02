@@ -15,19 +15,19 @@ import org.spongepowered.asm.mixin.injection.invoke.arg.Args;
 @Mixin(BlockEntityRenderDispatcher.class)
 public abstract class BlockEntityRenderDispatcherMixin {
     @ModifyArgs(
-            method = "render(Lnet/minecraft/block/entity/BlockEntity;FLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;)V",
+            method = "render(Lnet/minecraft/client/render/block/entity/BlockEntityRenderer;Lnet/minecraft/block/entity/BlockEntity;FLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;)V",
             at = @At(
                     value = "INVOKE",
-                    target = "Lnet/minecraft/client/render/block/entity/BlockEntityRenderDispatcher;render(Lnet/minecraft/client/render/block/entity/BlockEntityRenderer;Lnet/minecraft/block/entity/BlockEntity;FLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;)V"
+                    target = "Lnet/minecraft/client/render/block/entity/BlockEntityRenderer;render(Lnet/minecraft/block/entity/BlockEntity;FLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;II)V"
             )
     )
-    private void useRegionTickDelta(Args args) {
-        BlockEntity blockEntity = args.get(1);
+    private static void useRegionTickDelta(Args args) {
+        BlockEntity blockEntity = args.get(0);
         if (!(blockEntity.getWorld() instanceof ClientWorld world)) return;
 
         ClientRegion region = ClientRegionManager.getRegion(world, new ChunkPos(blockEntity.getPos()));
         if (region == null || !region.isControlled()) return;
 
-        args.set(2, RegionTickDeltaManager.getTickDelta(region.getId()));
+        args.set(1, RegionTickDeltaManager.getTickDelta(region.getId()));
     }
 }
