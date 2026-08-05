@@ -3,9 +3,9 @@
 	"id": "relativitytick",
 	"version": "${version}",
 	"name": "RelativityTick",
-	"description": "This is an example description! Tell everyone what your mod is about!",
+	"description": "Region-based /tick command",
 	"authors": [
-		"Me!"
+		"Abelian_2E47"
 	],
 	"contact": {
 		"homepage": "https://fabricmc.net/",
