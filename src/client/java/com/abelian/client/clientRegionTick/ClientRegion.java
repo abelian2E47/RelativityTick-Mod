@@ -20,6 +20,9 @@ public class ClientRegion {
     private double accumulator;
     private long virtualTime;
     private int pendingSteps;
+    private boolean disableHopperTick;
+    private boolean disableEntityTick;
+    private boolean disableObserverTick;
 
     public ClientRegion(RegionSyncPayload payload) {
         this.id = payload.id();
@@ -33,6 +36,9 @@ public class ClientRegion {
         this.regionState = payload.state();
         this.rate = payload.rate();
         this.virtualTime = payload.virtualTime();
+        this.disableHopperTick = payload.disableHopperTick();
+        this.disableEntityTick = payload.disableEntityTick();
+        this.disableObserverTick = payload.disableObserverTick();
         replaceChunks(payload.chunkPositions());
         if (!isRunning()) {
             this.accumulator = 0.0;
@@ -100,6 +106,12 @@ public class ClientRegion {
     public boolean isRunning(){ return regionState == RegionTickManager.RegionState.RUNNING; }
 
     public boolean isStepping(){ return pendingSteps > 0; }
+
+    public boolean isDisableHopperTick(){ return disableHopperTick; }
+
+    public boolean isDisableEntityTick(){ return disableEntityTick; }
+
+    public boolean isDisableObserverTick(){ return disableObserverTick; }
 
     public Set<Long> getChunkPositions(){ return chunkPositions; }
 

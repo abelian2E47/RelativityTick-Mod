@@ -117,7 +117,8 @@ public class RelativityTick implements ModInitializer {
                     }
                     if (result.stepsTaken() > 0 && remaining == 0) {
                         RegionSyncPayload syncPayload = new RegionSyncPayload(id, region.getDimensionId(), region.getChunkPositions(),
-                                region.getState(), region.getRate(), region.getVirtualTime());
+                                region.getState(), region.getRate(), region.getVirtualTime(),
+                                region.isDisableHopperTick(), region.isDisableEntityTick(), region.isDisableObserverTick());
                         RegionEntitySyncPayload entityPayload = new RegionEntitySyncPayload(id, new ArrayList<>(entityStates.values()));
                         for (ServerPlayerEntity player : world.getPlayers()) {
                             ServerPlayNetworking.send(player, syncPayload);

@@ -259,6 +259,9 @@ public class RegionsManager {
             region.setRate(data.rate());
             region.setRegionTime(data.regionTime());
             region.setMaxRegionCostMs(data.tickDurationLimit());
+            region.setDisableHopperTick(data.disableHopperTick());
+            region.setDisableEntityTick(data.disableEntityTick());
+            region.setDisableObserverTick(data.disableObserverTick());
             int priority = data.regionPriority();
             region.setRegionPriority(isPriorityAvailable(priority, id) ? priority : nextAvailablePriority());
             if (data.hasTimeline()) {
@@ -350,7 +353,10 @@ public class RegionsManager {
                 Set.of(),
                 RegionTickManager.RegionState.RELEASED,
                 region.getRate(),
-                region.getVirtualTime()
+                region.getVirtualTime(),
+                region.isDisableHopperTick(),
+                region.isDisableEntityTick(),
+                region.isDisableObserverTick()
         );
         getServer().getPlayerManager().getPlayerList()
                 .forEach(player -> ServerPlayNetworking.send(player, payload));
@@ -358,7 +364,8 @@ public class RegionsManager {
 
     private static RegionSyncPayload createSyncPayload(String id, RegionTickManager region) {
         return new RegionSyncPayload(id, region.getDimensionId(), region.getChunkPositions(),
-                region.getState(), region.getRate(), region.getVirtualTime());
+                region.getState(), region.getRate(), region.getVirtualTime(),
+                region.isDisableHopperTick(), region.isDisableEntityTick(), region.isDisableObserverTick());
     }
 
     private static DimensionChunkKey key(ServerWorld world, long chunkPos) {

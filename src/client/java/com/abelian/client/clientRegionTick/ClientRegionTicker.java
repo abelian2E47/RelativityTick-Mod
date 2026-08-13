@@ -133,17 +133,21 @@ public class ClientRegionTicker {
 
             ClientTickBridge.setCustomTickInProgress(true);
             try {
-                collectTickingEntities(world, chunkSet);
-                for (Entity entity : ENTITY_TICK_BUFFER) {
-                    if (entity.isRemoved()) continue;
+                if (!region.isDisableEntityTick()) {
+                    collectTickingEntities(world, chunkSet);
+                    for (Entity entity : ENTITY_TICK_BUFFER) {
+                        if (entity.isRemoved()) continue;
 
-                    previousPositions.putIfAbsent(entity.getId(), entity.getPos());
-                    tickedEntities.put(entity.getId(), entity);
-                    ((ClientWorldAccessor) world).invokeTickEntity(entity);
+                        previousPositions.putIfAbsent(entity.getId(), entity.getPos());
+                        tickedEntities.put(entity.getId(), entity);
+                        ((ClientWorldAccessor) world).invokeTickEntity(entity);
+                    }
                 }
 
                 ENTITY_TICK_BUFFER.clear();
-                ClientRegionBlockEntityTicker.tickBlockEntities(world, chunkSet);
+                if (!region.isDisableHopperTick()) {
+                    ClientRegionBlockEntityTicker.tickBlockEntities(world, chunkSet);
+                }
             } finally {
                 ClientTickBridge.setCustomTickInProgress(false);
                 RegionTickContext.end();

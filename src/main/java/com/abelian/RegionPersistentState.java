@@ -106,7 +106,10 @@ public class RegionPersistentState extends PersistentState {
             boolean hasTimeline = regionNbt.contains("freezeStartTime") && regionNbt.contains("stepped");
             long freezeStartTime = hasTimeline ? regionNbt.getLong("freezeStartTime") : 0L;
             int stepped = hasTimeline ? regionNbt.getInt("stepped") : 0;
-            state.regions.put(id, new RegionData(dimension, chunks, rate, maxRegionCostMs, priority, regionState, regionTime, freezeStartTime, stepped, hasTimeline));
+            boolean disableHopperTick = regionNbt.getBoolean("disableHopperTick");
+            boolean disableEntityTick = regionNbt.getBoolean("disableEntityTick");
+            boolean disableObserverTick = regionNbt.getBoolean("disableObserverTick");
+            state.regions.put(id, new RegionData(dimension, chunks, rate, maxRegionCostMs, priority, regionState, regionTime, freezeStartTime, stepped, hasTimeline, disableHopperTick, disableEntityTick, disableObserverTick));
         }
         return state;
     }
@@ -137,6 +140,9 @@ public class RegionPersistentState extends PersistentState {
             regionNbt.putLong("freezeStartTime", region.freezeStartTime());
             regionNbt.putInt("regionTime", region.regionTime());
             regionNbt.putInt("stepped", region.stepped());
+            regionNbt.putBoolean("disableHopperTick", region.disableHopperTick());
+            regionNbt.putBoolean("disableEntityTick", region.disableEntityTick());
+            regionNbt.putBoolean("disableObserverTick", region.disableObserverTick());
             regionList.add(regionNbt);
         }
 
@@ -160,7 +166,7 @@ public class RegionPersistentState extends PersistentState {
         markDirty();
     }
 
-    public record RegionData(RegistryKey<World> dimension, Set<Long> chunks, double rate, double tickDurationLimit , int regionPriority, RegionTickManager.RegionState state, int regionTime, long freezeStartTime, int stepped, boolean hasTimeline) {
+    public record RegionData(RegistryKey<World> dimension, Set<Long> chunks, double rate, double tickDurationLimit , int regionPriority, RegionTickManager.RegionState state, int regionTime, long freezeStartTime, int stepped, boolean hasTimeline, boolean disableHopperTick, boolean disableEntityTick, boolean disableObserverTick) {
         public RegionData {
             chunks = Set.copyOf(chunks);
         }

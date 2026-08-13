@@ -78,6 +78,14 @@ public class ServerCommands {
                 .requires(source -> source.hasPermissionLevel(2))
                 .then(CommandManager.literal("remove")
                         .then(regionId().executes(ctx -> executeRemove(RegionCommandContext.of(ctx)))))
+                .then(CommandManager.literal("setting")
+                        .then(CommandManager.argument("setting", StringArgumentType.word())
+                                .suggests(ServerCommands::suggestSettings)
+                                .then(regionId()
+                                        .then(CommandManager.literal("enable")
+                                                .executes(ctx -> setSetting(RegionCommandContext.of(ctx), StringArgumentType.getString(ctx, "setting"), false)))
+                                        .then(CommandManager.literal("disable")
+                                                .executes(ctx -> setSetting(RegionCommandContext.of(ctx), StringArgumentType.getString(ctx, "setting"), true))))))
                 .then(CommandManager.literal("parameter")
                         .then(CommandManager.literal("priority")
                                 .then(regionId()
@@ -189,6 +197,13 @@ public class ServerCommands {
 
     private static CompletableFuture<Suggestions> suggestRegions(CommandContext<ServerCommandSource> context, SuggestionsBuilder builder) {
         RegionsManager.getRegionIds().forEach(builder::suggest);
+        return builder.buildFuture();
+    }
+
+    private static CompletableFuture<Suggestions> suggestSettings(CommandContext<ServerCommandSource> context, SuggestionsBuilder builder) {
+        builder.suggest("hopperTick");
+        builder.suggest("entityTick");
+        builder.suggest("observerScheduledTick");
         return builder.buildFuture();
     }
 
@@ -352,6 +367,37 @@ public class ServerCommands {
         return 1;
     }
 
+    private static int setSetting(RegionCommandContext rcc, String setting, boolean disable) {
+        if (rcc.isInvalid()) return 0;
+
+        String settingKey;
+        switch (setting) {
+            case "hopperTick" -> {
+                rcc.manager.setDisableHopperTick(disable);
+                settingKey = "relativitytick.command.setting.hopper_tick";
+            }
+            case "entityTick" -> {
+                rcc.manager.setDisableEntityTick(disable);
+                settingKey = "relativitytick.command.setting.entity_tick";
+            }
+            case "observerScheduledTick" -> {
+                rcc.manager.setDisableObserverTick(disable);
+                settingKey = "relativitytick.command.setting.observer_scheduled_tick";
+            }
+            default -> {
+                rcc.source.sendError(Text.translatable("relativitytick.command.error.unknown_setting", setting).formatted(Formatting.RED));
+                return 0;
+            }
+        }
+
+        RegionsManager.savePersistentState();
+        String valueKey = disable ? "relativitytick.command.setting.disabled" : "relativitytick.command.setting.enabled";
+        sendFeedback(rcc.source, rcc.id, "relativitytick.command.region.setting_set",
+                Text.translatable(settingKey), Text.translatable(valueKey));
+        syncRegionState(rcc);
+        return 1;
+    }
+
     private static int executeRemove(RegionCommandContext rcc) {
         if (rcc.isInvalid()) return 0;
         RegionsManager.removeRegion(rcc.id);
@@ -426,6 +472,20 @@ public class ServerCommands {
         }else if (mgr.hasReachedTickDurationLimit()){
             source.sendFeedback(() -> Text.translatable("relativitytick.command.warning.tick_duration_slowdown").formatted(Formatting.ITALIC, Formatting.RED), false);
         }
+
+        //禁用设置
+        source.sendFeedback(() -> Text.translatable("relativitytick.command.status.hopper_tick",
+                settingValue(mgr.isDisableHopperTick())), false);
+        source.sendFeedback(() -> Text.translatable("relativitytick.command.status.entity_tick",
+                settingValue(mgr.isDisableEntityTick())), false);
+        source.sendFeedback(() -> Text.translatable("relativitytick.command.status.observer_tick",
+                settingValue(mgr.isDisableObserverTick())), false);
+    }
+
+    private static Text settingValue(boolean disabled) {
+        return disabled
+                ? Text.translatable("relativitytick.command.setting.disabled").formatted(Formatting.RED)
+                : Text.translatable("relativitytick.command.setting.enabled").formatted(Formatting.GREEN);
     }
 
     private static Formatting stateFormatting(String stateKey) {
@@ -439,7 +499,8 @@ public class ServerCommands {
 
     private static void syncRegionState(RegionCommandContext rcc) {
         RegionSyncPayload payload = new RegionSyncPayload(rcc.id, rcc.manager.getDimensionId(), rcc.manager.getChunkPositions(),
-                rcc.manager.getState(), rcc.manager.getRate(), rcc.manager.getVirtualTime());
+                rcc.manager.getState(), rcc.manager.getRate(), rcc.manager.getVirtualTime(),
+                rcc.manager.isDisableHopperTick(), rcc.manager.isDisableEntityTick(), rcc.manager.isDisableObserverTick());
         sendToWorldPlayers(rcc.world, payload);
     }
 

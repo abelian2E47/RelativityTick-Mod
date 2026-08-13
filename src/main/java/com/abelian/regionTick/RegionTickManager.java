@@ -15,6 +15,7 @@ import com.abelian.mixin.ServerChunkLoadingManagerAccessor;
 import com.abelian.mixin.ServerWorldAccessor;
 import com.abelian.network.EntityStateRecord;
 import net.minecraft.block.Block;
+import net.minecraft.block.Blocks;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.SpawnGroup;
 import net.minecraft.entity.player.PlayerEntity;
@@ -55,6 +56,9 @@ public class RegionTickManager {
     private double accumulator = 0.0;
     private double tickDurationLimit = 10.0;
     private int regionPriority = 1;
+    private boolean disableHopperTick = false;
+    private boolean disableEntityTick = false;
+    private boolean disableObserverTick = false;
     private RegionState state = RegionState.RELEASED;
 
     private static final int TPS_AVERAGE_WINDOW_GT = 100;
@@ -180,7 +184,14 @@ public class RegionTickManager {
         long virtualTime = freezeStartTime + stepped;
         RegionTickContext.begin(world, virtualTime);
         try {
-            tickScheduledTicks(blockScheduler, blockTicker, fluidScheduler, fluidTicker, virtualTime);
+            BiConsumer<BlockPos, Block> effectiveBlockTicker = disableObserverTick
+                    ? (pos, block) -> {
+                        if (block != Blocks.OBSERVER) {
+                            blockTicker.accept(pos, block);
+                        }
+                    }
+                    : blockTicker;
+            tickScheduledTicks(blockScheduler, effectiveBlockTicker, fluidScheduler, fluidTicker, virtualTime);
             tickChunkWorld(world);
             RegionBlockEventProcessor.process(world, this);
             this.tickEntities(world);
@@ -198,6 +209,8 @@ public class RegionTickManager {
             BlockPos pos = invoker.getPos();
             if (pos == null || !chunkPositions.contains(ChunkPos.toLong(pos))) return;
 
+            if (disableHopperTick && world.getBlockState(pos).isOf(Blocks.HOPPER)) return;
+
             if (world.shouldTickBlockPos(pos)) {
                 invoker.tick();
             }
@@ -205,6 +218,8 @@ public class RegionTickManager {
     }
 
     private void tickEntities(ServerWorld world) {
+        if (disableEntityTick) return;
+
         for (Entity entity : ServerTickBridge.getOrderedEntitySnapshot(world)) {
             if (entity instanceof PlayerEntity || entity.isRemoved()) continue;
             if (!chunkPositions.contains(entity.getChunkPos().toLong())) continue;
@@ -326,6 +341,18 @@ public class RegionTickManager {
 
     public void setRegionPriority(int regionPriority) {this.regionPriority = Math.max(1, regionPriority);}
 
+    public boolean isDisableHopperTick() { return disableHopperTick; }
+
+    public void setDisableHopperTick(boolean disableHopperTick) { this.disableHopperTick = disableHopperTick; }
+
+    public boolean isDisableEntityTick() { return disableEntityTick; }
+
+    public void setDisableEntityTick(boolean disableEntityTick) { this.disableEntityTick = disableEntityTick; }
+
+    public boolean isDisableObserverTick() { return disableObserverTick; }
+
+    public void setDisableObserverTick(boolean disableObserverTick) { this.disableObserverTick = disableObserverTick; }
+
     public RegionState getState() { return state; }
 
     public void setState(RegionState state) { this.state = state; }
@@ -371,7 +398,10 @@ public class RegionTickManager {
                 regionTime,
                 freezeStartTime,
                 stepped,
-                true
+                true,
+                disableHopperTick,
+                disableEntityTick,
+                disableObserverTick
         );
     }
 
