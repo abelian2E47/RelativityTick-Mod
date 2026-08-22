@@ -25,16 +25,11 @@ public abstract class ChunkTickSchedulerMixin<T> {
         ChunkTickScheduler<T> scheduler = (ChunkTickScheduler<T>) (Object) this;
         RegionTickManager region = RegionsManager.getControlledRegionByScheduler(scheduler);
 
-        if (region == null) {
-            return;
-        }
+        if (region == null) return;
 
-        //换算到区域时间轴
-        long startTime = region.getFreezeStartTime();
-        int stepped = region.getStepped();
-        long currentTime = region.getCurrentWorldTime();
+        long currentTime = region.getSchedulingTime();
         long delay = orderedTick.triggerTick() - currentTime;
-        long correctedTriggerTick = startTime + stepped + delay;
+        long correctedTriggerTick = region.getSchedulingVirtualTime() + delay;
 
         OrderedTick<T> correctedTick = new OrderedTick<>(
                 orderedTick.type(),

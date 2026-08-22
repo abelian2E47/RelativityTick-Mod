@@ -4,10 +4,17 @@ import com.abelian.RegionPersistentState;
 import com.abelian.config.RelativityTickConfig;
 import com.abelian.RegionTickContext;
 import com.abelian.ServerTickBridge;
+import net.minecraft.server.MinecraftServer;
+import com.abelian.RelativityTickUtils;
 import com.abelian.mixin.WorldAccessor;
 import net.minecraft.server.world.ServerChunkManager;
 import net.minecraft.world.chunk.BlockEntityTickInvoker;
 import java.util.Iterator;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.function.BiConsumer;
 
 import net.minecraft.util.math.ChunkPos;
 import com.abelian.mixin.ServerChunkManagerAccessor;
@@ -28,12 +35,6 @@ import net.minecraft.world.World;
 import net.minecraft.world.chunk.Chunk;
 import net.minecraft.world.chunk.WorldChunk;
 import net.minecraft.world.tick.WorldTickScheduler;
-
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.function.BiConsumer;
 
 
 public class RegionTickManager {
@@ -171,6 +172,20 @@ public class RegionTickManager {
     public long getCurrentWorldTime() {
         return currentWorldTime;
     }
+
+    public long getSchedulingTime() {
+        MinecraftServer server = RelativityTickUtils.getServer();
+        ServerWorld world = server == null ? null : server.getWorld(dimension);
+        return world == null ? currentWorldTime : world.getLevelProperties().getTime();
+    }
+
+    public long getSchedulingVirtualTime() {
+        MinecraftServer server = RelativityTickUtils.getServer();
+        ServerWorld world = server == null ? null : server.getWorld(dimension);
+        Long virtualTime = world == null ? null : RegionTickContext.getTime(world);
+        return virtualTime != null ? virtualTime : getVirtualTime();
+    }
+
 
     public long getVirtualTime() {
         return freezeStartTime + stepped;
