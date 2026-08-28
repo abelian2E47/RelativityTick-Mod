@@ -172,21 +172,16 @@ public class RegionsManager {
         for (RegionTickManager region : ID_TO_REGION.values()) {
             region.setPendingSteps(0);
             region.setAccumulator(0.0);
-            if (!region.isControlled()) continue;
-
-            ServerWorld world = getServer().getWorld(region.getDimension());
-            if (world == null) continue;
-            region.takeOverRegion(world.getBlockTickScheduler(), region.getCurrentWorldTime());
-            region.takeOverRegion(world.getFluidTickScheduler(), region.getCurrentWorldTime());
         }
     }
 
     public static void prepareForShutdown() {
         shuttingDown = true;
         for (RegionTickManager region : ID_TO_REGION.values()) {
+            releaseControl(region);
+            region.setState(RegionTickManager.RegionState.RELEASED);
             region.setPendingSteps(0);
             region.setAccumulator(0.0);
-            releaseControl(region, false);
         }
         savePersistentState();
     }
@@ -194,15 +189,12 @@ public class RegionsManager {
     public static void onChunkLoad(ServerWorld world, long chunkPos) {
         if (shuttingDown) return;
         RegionTickManager region = getRegionByChunk(world, chunkPos);
-        if (region != null && region.isControlled()) {
+        if (region == null) return;
+        if (region.isControlled()) {
             region.takeOverChunk(chunkPos, world);
-        }
-    }
-
-    public static void onChunkUnload(ServerWorld world, long chunkPos) {
-        RegionTickManager region = getRegionByChunk(world, chunkPos);
-        if (region != null && region.isControlled()) {
-            region.releaseChunk(chunkPos, world);
+        } else {
+            //区域已释放但区块带着虚拟时间线锚点落盘,还给 vanilla 前换算回真实时间线
+            region.releaseChunkToWorld(chunkPos, world);
         }
     }
 
@@ -255,23 +247,9 @@ public class RegionsManager {
         for (Map.Entry<String, RegionPersistentState.RegionData> entry : state.getRegions().entrySet()) {
             String id = entry.getKey();
             RegionPersistentState.RegionData data = entry.getValue();
+            //重进后重新添加区域,保持非 controlled 状态,不恢复退出前的配置/时间线
             RegionTickManager region = new RegionTickManager(id, data.dimension(), data.chunks());
-            region.setRate(data.rate());
-            region.setRegionTime(data.regionTime());
-            region.setMaxRegionCostMs(data.tickDurationLimit());
-            region.setDisableHopperTick(data.disableHopperTick());
-            region.setDisableEntityTick(data.disableEntityTick());
-            region.setDisableObserverTick(data.disableObserverTick());
-            int priority = data.regionPriority();
-            region.setRegionPriority(isPriorityAvailable(priority, id) ? priority : nextAvailablePriority());
-            if (data.hasTimeline()) {
-                region.restoreTimeline(data.freezeStartTime(), data.stepped(), data.freezeStartTime() + data.stepped());
-            } else {
-                ServerWorld world = getServer().getWorld(data.dimension());
-                long currentTime = world != null ? world.getTime() : 0L;
-                region.restoreTimeline(currentTime, 0, currentTime);
-            }
-            region.setState(data.state());
+            region.setRegionPriority(nextAvailablePriority());
             ID_TO_REGION.put(id, region);
 
             for (long chunkPos : data.chunks()) {
@@ -319,16 +297,12 @@ public class RegionsManager {
     }
 
     private static void releaseControl(RegionTickManager region) {
-        releaseControl(region, true);
-    }
-
-    private static void releaseControl(RegionTickManager region, boolean restoreWorldTime) {
         if (!region.isControlled()) return;
 
         ServerWorld world = getServer().getWorld(region.getDimension());
         if (world == null) return;
-        region.releaseRegion(world.getBlockTickScheduler(), world.getTime(), restoreWorldTime);
-        region.releaseRegion(world.getFluidTickScheduler(), world.getTime(), restoreWorldTime);
+        region.releaseRegion(world.getBlockTickScheduler(), world.getTime());
+        region.releaseRegion(world.getFluidTickScheduler(), world.getTime());
     }
 
     private static void removeMappings(RegionTickManager region) {

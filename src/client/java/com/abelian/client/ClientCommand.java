@@ -1,8 +1,14 @@
 package com.abelian.client;
 
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.BoolArgumentType;
+import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import com.abelian.client.config.RelativityTickClientConfig;
 import com.abelian.regionTick.RegionsManager;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
+import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.command.CommandRegistryAccess;
 import net.minecraft.server.command.CommandManager;
@@ -14,6 +20,7 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
 import com.abelian.network.SelectionOperationPayload;
 
+import java.io.IOException;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -40,11 +47,80 @@ public class ClientCommand {
                         .then(CommandManager.literal("remove")
                                 .executes(context -> removeChunk(context.getSource()))
                         )
-                        .then(CommandManager.literal("select")
-                                .executes(context -> select(context.getSource()))
+                .then(CommandManager.literal("select")
+                        .executes(context -> select(context.getSource()))
                         )
                 )
         );
+    }
+
+    //客户端本地渲染配置命令：通过 fabric 客户端命令 API 注册，专用服务器客户端同样可见
+    public static void registerClientConfigCommands(CommandDispatcher<FabricClientCommandSource> dispatcher, CommandRegistryAccess registryAccess) {
+        dispatcher.register(ClientCommandManager.literal("relativityTickClient")
+                .then(ClientCommandManager.literal("scheduledTickRender")
+                        .executes(context -> showScheduledTickRender(context.getSource()))
+                        .then(ClientCommandManager.literal("enabled")
+                                .then(ClientCommandManager.argument("value", BoolArgumentType.bool())
+                                        .executes(context -> setScheduledTickRenderEnabled(
+                                                context.getSource(), BoolArgumentType.getBool(context, "value")))))
+                        .then(ClientCommandManager.literal("textScale")
+                                .then(ClientCommandManager.argument("value", DoubleArgumentType.doubleArg(0.005, 1.0))
+                                        .executes(context -> setScheduledTickTextScale(
+                                                context.getSource(), DoubleArgumentType.getDouble(context, "value"))))))
+                .then(ClientCommandManager.literal("regionLineWidth")
+                        .executes(context -> showRegionLineWidth(context.getSource()))
+                        .then(ClientCommandManager.argument("value", DoubleArgumentType.doubleArg(0.5, 16.0))
+                                .executes(context -> setRegionLineWidth(
+                                        context.getSource(), DoubleArgumentType.getDouble(context, "value"))))));
+    }
+
+    private static int showScheduledTickRender(FabricClientCommandSource source) {
+        source.sendFeedback(Text.translatable("relativitytick.command.client.config.scheduled_tick_render",
+                RelativityTickClientConfig.isRenderScheduledTicksEnabled()));
+        return 1;
+    }
+
+    private static int setScheduledTickRenderEnabled(FabricClientCommandSource source, boolean value) {
+        try {
+            RelativityTickClientConfig.setRenderScheduledTicksEnabled(value);
+        } catch (IOException e) {
+            source.sendError(Text.translatable("relativitytick.command.error.config_save_failed").formatted(Formatting.RED));
+            return 0;
+        }
+        return showScheduledTickRender(source);
+    }
+
+    private static int setScheduledTickTextScale(FabricClientCommandSource source, double value) {
+        try {
+            RelativityTickClientConfig.setScheduledTickTextScale(value);
+        } catch (IOException e) {
+            source.sendError(Text.translatable("relativitytick.command.error.config_save_failed").formatted(Formatting.RED));
+            return 0;
+        }
+        source.sendFeedback(Text.translatable("relativitytick.command.client.config.text_scale",
+                formatValue(RelativityTickClientConfig.getScheduledTickTextScale())));
+        return 1;
+    }
+
+    private static int showRegionLineWidth(FabricClientCommandSource source) {
+        source.sendFeedback(Text.translatable("relativitytick.command.client.config.region_line_width",
+                formatValue(RelativityTickClientConfig.getRegionLineWidth())));
+        return 1;
+    }
+
+    private static int setRegionLineWidth(FabricClientCommandSource source, double value) {
+        try {
+            RelativityTickClientConfig.setRegionLineWidth(value);
+        } catch (IOException e) {
+            source.sendError(Text.translatable("relativitytick.command.error.config_save_failed").formatted(Formatting.RED));
+            return 0;
+        }
+        return showRegionLineWidth(source);
+    }
+
+    private static String formatValue(double value) {
+        java.math.BigDecimal decimal = java.math.BigDecimal.valueOf(value);
+        return decimal.setScale(4, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString();
     }
 
     private static int select(ServerCommandSource source) {

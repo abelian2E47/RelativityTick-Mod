@@ -53,6 +53,10 @@ public class ClientRegion {
         return ++virtualTime;
     }
 
+    public long getVirtualTime() {
+        return virtualTime;
+    }
+
     public void updateRegionTPS(RegionTPSPayload payload){
         this.regionTPS = payload.TPS();
         System.out.println("regionTPS is update to" + payload.TPS());
@@ -97,10 +101,6 @@ public class ClientRegion {
         this.pendingSteps = Math.max(0, pendingSteps);
     }
 
-    public int getPendingSteps() {
-        return pendingSteps;
-    }
-
     public boolean isControlled(){ return regionState != RegionTickManager.RegionState.RELEASED; }
 
     public boolean isRunning(){ return regionState == RegionTickManager.RegionState.RUNNING; }
@@ -110,8 +110,6 @@ public class ClientRegion {
     public boolean isDisableHopperTick(){ return disableHopperTick; }
 
     public boolean isDisableEntityTick(){ return disableEntityTick; }
-
-    public boolean isDisableObserverTick(){ return disableObserverTick; }
 
     public Set<Long> getChunkPositions(){ return chunkPositions; }
 

@@ -1,4 +1,4 @@
-package com.abelian.config;
+package com.abelian.client.config;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -15,19 +15,19 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-public final class RelativityTickConfig {
-    public static final double DEFAULT_MAX_MSPT = 45.0;
-    public static final boolean DEFAULT_CHUNK_TICK_ENABLED = true;
-    public static final boolean DEFAULT_SCHEDULED_TICK_SEND_ENABLED = true;
+public final class RelativityTickClientConfig {
+    public static final boolean DEFAULT_RENDER_SCHEDULED_TICKS = true;
+    public static final double DEFAULT_SCHEDULED_TICK_TEXT_SCALE = 0.03;
+    public static final double DEFAULT_REGION_LINE_WIDTH = 2.5;
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final Path CONFIG_PATH = FabricLoader.getInstance().getConfigDir().resolve("relativitytick.json");
+    private static final Path CONFIG_PATH = FabricLoader.getInstance().getConfigDir().resolve("relativitytick-client.json");
 
-    private static double maxMspt = DEFAULT_MAX_MSPT;
-    private static boolean chunkTickEnabled = DEFAULT_CHUNK_TICK_ENABLED;
-    private static boolean scheduledTickSendEnabled = DEFAULT_SCHEDULED_TICK_SEND_ENABLED;
+    private static boolean renderScheduledTicks = DEFAULT_RENDER_SCHEDULED_TICKS;
+    private static double scheduledTickTextScale = DEFAULT_SCHEDULED_TICK_TEXT_SCALE;
+    private static double regionLineWidth = DEFAULT_REGION_LINE_WIDTH;
 
-    private RelativityTickConfig() {
+    private RelativityTickClientConfig() {
     }
 
     public static void initialize() {
@@ -44,12 +44,9 @@ public final class RelativityTickConfig {
             }
 
             JsonObject root = parsed.getAsJsonObject();
-            maxMspt = readNumber(root, "maxMspt", DEFAULT_MAX_MSPT);
-            JsonObject chunkTick = root.has("chunkTick") && root.get("chunkTick").isJsonObject()
-                    ? root.getAsJsonObject("chunkTick")
-                    : new JsonObject();
-            chunkTickEnabled = readBoolean(chunkTick, "enabled", DEFAULT_CHUNK_TICK_ENABLED);
-            scheduledTickSendEnabled = readBoolean(root, "scheduledTickSend", DEFAULT_SCHEDULED_TICK_SEND_ENABLED);
+            renderScheduledTicks = readBoolean(root, "renderScheduledTicks", DEFAULT_RENDER_SCHEDULED_TICKS);
+            scheduledTickTextScale = readNumber(root, "scheduledTickTextScale", DEFAULT_SCHEDULED_TICK_TEXT_SCALE);
+            regionLineWidth = readNumber(root, "regionLineWidth", DEFAULT_REGION_LINE_WIDTH);
             writeConfig();
         } catch (IOException | RuntimeException e) {
             setDefaults();
@@ -57,38 +54,37 @@ public final class RelativityTickConfig {
         }
     }
 
-    public static double getMaxMspt() {
-        return maxMspt;
+    public static boolean isRenderScheduledTicksEnabled() {
+        return renderScheduledTicks;
     }
 
-    public static void setMaxMspt(double value) throws IOException {
-        maxMspt = value;
+    public static void setRenderScheduledTicksEnabled(boolean value) throws IOException {
+        renderScheduledTicks = value;
         writeConfig();
     }
 
-    public static boolean isChunkTickEnabled() {
-        return chunkTickEnabled;
+    public static double getScheduledTickTextScale() {
+        return scheduledTickTextScale;
     }
 
-    public static void setChunkTickEnabled(boolean value) throws IOException {
-        chunkTickEnabled = value;
+    public static void setScheduledTickTextScale(double value) throws IOException {
+        scheduledTickTextScale = value;
         writeConfig();
     }
 
-    public static boolean isScheduledTickSendEnabled() {
-        return scheduledTickSendEnabled;
+    public static double getRegionLineWidth() {
+        return regionLineWidth;
     }
 
-    public static void setScheduledTickSendEnabled(boolean value) throws IOException {
-        scheduledTickSendEnabled = value;
+    public static void setRegionLineWidth(double value) throws IOException {
+        regionLineWidth = value;
         writeConfig();
     }
-
 
     private static void setDefaults() {
-        maxMspt = DEFAULT_MAX_MSPT;
-        chunkTickEnabled = DEFAULT_CHUNK_TICK_ENABLED;
-        scheduledTickSendEnabled = DEFAULT_SCHEDULED_TICK_SEND_ENABLED;
+        renderScheduledTicks = DEFAULT_RENDER_SCHEDULED_TICKS;
+        scheduledTickTextScale = DEFAULT_SCHEDULED_TICK_TEXT_SCALE;
+        regionLineWidth = DEFAULT_REGION_LINE_WIDTH;
     }
 
     private static double readNumber(JsonObject object, String key, double defaultValue) {
@@ -120,13 +116,9 @@ public final class RelativityTickConfig {
         Files.createDirectories(CONFIG_PATH.getParent());
         try (Writer writer = Files.newBufferedWriter(CONFIG_PATH, StandardCharsets.UTF_8)) {
             JsonObject root = new JsonObject();
-            root.addProperty("maxMspt", maxMspt);
-            root.addProperty("scheduledTickSend", scheduledTickSendEnabled);
-
-            JsonObject chunkTick = new JsonObject();
-            chunkTick.addProperty("enabled", chunkTickEnabled);
-            root.add("chunkTick", chunkTick);
-
+            root.addProperty("renderScheduledTicks", renderScheduledTicks);
+            root.addProperty("scheduledTickTextScale", scheduledTickTextScale);
+            root.addProperty("regionLineWidth", regionLineWidth);
             GSON.toJson(root, writer);
         }
     }

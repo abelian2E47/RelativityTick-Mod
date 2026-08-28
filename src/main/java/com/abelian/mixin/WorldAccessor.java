@@ -16,8 +16,5 @@ public interface WorldAccessor {
     List<BlockEntityTickInvoker> getPendingBlockEntityTickers();
 
     @Accessor("iteratingTickingBlockEntities")
-    boolean isIteratingTickingBlockEntities();
-
-    @Accessor("iteratingTickingBlockEntities")
     void setIteratingTickingBlockEntities(boolean value);
 }

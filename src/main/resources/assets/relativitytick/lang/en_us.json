@@ -1,6 +1,7 @@
 {
   "relativitytick.command.config.max_mspt": "maxMspt: %s",
   "relativitytick.command.config.chunk_tick": "chunkTick.enabled: %s",
+  "relativitytick.command.config.scheduled_tick_send": "scheduledTickSend: %s",
   "relativitytick.command.error.not_in_region": "ERROR: you are not inside a region; specify a region id explicitly",
   "relativitytick.command.error.region_not_found": "ERROR: '%s' not found",
   "relativitytick.command.error.config_save_failed": "ERROR: failed to save RelativityTick config",
@@ -29,7 +30,7 @@
   "relativitytick.command.region.removed": "remove region %s",
   "relativitytick.command.status.no_regions": "No regions",
   "relativitytick.command.status.header": "--- region status: %s ---",
-  "relativitytick.command.status.region_time": "Region time: %s",
+  "relativitytick.command.status.timeline": "Timeline: start %s, stepped %s",
   "relativitytick.command.status.state": "State: %s",
   "relativitytick.command.status.chunks": "Chunks: %s",
   "relativitytick.command.status.priority": "Priority: %s",
@@ -53,11 +54,17 @@
   "relativitytick.command.client.selected_chunks_added": "Added %s selected chunks to region %s",
   "relativitytick.command.client.chunk_added": "Added chunk %s to region %s",
   "relativitytick.command.client.chunk_removed": "Removed chunk %s from region %s",
+  "relativitytick.command.client.config.scheduled_tick_render": "scheduledTickRender.enabled: %s",
+  "relativitytick.command.client.config.text_scale": "scheduledTickRender.textScale: %s",
+  "relativitytick.command.client.config.region_line_width": "regionLineWidth: %s",
   "key.relativitytick.start_selecting": "Toggle region selection",
   "category.relativitytick": "RelativityTick",
   "relativitytick.selection.chunk_added": "add chunk: %s %s",
   "relativitytick.selection.chunk_removed": "remove chunk: %s %s",
   "relativitytick.selection.chunk_not_selected": "The region is not selected: %s %s",
   "relativitytick.selection.mode_activated": "Selection mode: Activated",
-  "relativitytick.selection.mode_deactivated": "Selection mode: Deactivated"
+  "relativitytick.selection.mode_deactivated": "Selection mode: Deactivated",
+  "relativitytick.scheduled_tick.remaining": "In %s gt",
+  "relativitytick.scheduled_tick.sub_order": "subOrder %s",
+  "relativitytick.scheduled_tick.priority": "Priority %s"
 }

@@ -1,9 +1,12 @@
 package com.abelian.client;
 
 import com.abelian.client.clientRegionTick.ClientRegionManager;
+import com.abelian.client.clientRegionTick.ClientScheduledTickManager;
 import com.abelian.client.clientRegionTick.ClientRegionTicker;
+import com.abelian.client.config.RelativityTickClientConfig;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
@@ -33,11 +36,14 @@ public class RelativityTickClient implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
 
+		RelativityTickClientConfig.initialize();
 		ClientRegionManager.register();
 		ClientRegionTicker.register();
+		ClientScheduledTickManager.register();
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> clearClientState());
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> clearClientState());
         CommandRegistrationCallback.EVENT.register(ClientCommand::register);
+        ClientCommandRegistrationCallback.EVENT.register(ClientCommand::registerClientConfigCommands);
 
 		startSelectingKeyBinding = KeyBindingHelper.registerKeyBinding(new KeyBinding(
 				"key.relativitytick.start_selecting",
@@ -106,6 +112,7 @@ public class RelativityTickClient implements ClientModInitializer {
 		currentState = SelectionState.OFF;
 		ClientRegionManager.clear();
 		ClientRegionTicker.clear();
+		ClientScheduledTickManager.clear();
 	}
 
 

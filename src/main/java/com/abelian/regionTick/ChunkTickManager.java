@@ -4,13 +4,8 @@ import com.abelian.mixin.WorldTickSchedulerAccessor;
 import net.minecraft.world.tick.ChunkTickScheduler;
 import net.minecraft.world.tick.OrderedTick;
 import net.minecraft.world.tick.WorldTickScheduler;
-import net.minecraft.util.math.BlockPos;
-
-import java.util.ArrayList;
 import java.util.List;
-import java.util.PriorityQueue;
-import java.util.Queue;
-import java.util.function.BiConsumer;
+
 
 public class ChunkTickManager {
     private final long chunkPosLong;
@@ -24,34 +19,40 @@ public class ChunkTickManager {
     }
 
     @SuppressWarnings("unchecked")
-    public <T> void takeOverChunk(WorldTickScheduler<T> worldScheduler, RegionTickManager region, long currentWorldTime) {
+    public <T> void takeOverChunk(WorldTickScheduler<T> worldScheduler, RegionTickManager region) {
         WorldTickSchedulerAccessor<T> worldAccess = (WorldTickSchedulerAccessor<T>) worldScheduler;
         ChunkTickScheduler<T> chunkScheduler = worldAccess.getChunkTickSchedulers().get(chunkPosLong);
         if (chunkScheduler == null || ControlledSchedulerRegistry.getRegion(chunkScheduler) == region) return;
 
-        long virtualTime = region.getFreezeStartTime() + region.getStepped();
-        shiftScheduledTicks(chunkScheduler, virtualTime - currentWorldTime);
+        shiftScheduledTicks(chunkScheduler, 0);
         chunkScheduler.setTickConsumer((scheduler, tick) -> {});
         ControlledSchedulerRegistry.register(chunkScheduler, region);
         worldAccess.getNextTriggerTickByChunkPos().remove(chunkPosLong);
     }
 
+    //重新加载游戏时恢复区块状态
     @SuppressWarnings("unchecked")
-    public <T> void releaseChunk(WorldTickScheduler<T> worldScheduler, RegionTickManager region, long currentWorldTime, long freezeStartTime, int stepped) {
-        releaseChunk(worldScheduler, region, currentWorldTime, freezeStartTime, stepped, true);
+    public <T> void retakeOverChunk(WorldTickScheduler<T> worldScheduler, RegionTickManager region, long currentWorldTime) {
+        WorldTickSchedulerAccessor<T> worldAccess = (WorldTickSchedulerAccessor<T>) worldScheduler;
+        ChunkTickScheduler<T> chunkScheduler = worldAccess.getChunkTickSchedulers().get(chunkPosLong);
+        if (chunkScheduler == null || ControlledSchedulerRegistry.getRegion(chunkScheduler) == region) return;
+
+        long virtualTime = region.getStartTime() + region.getStepped();
+        System.out.println("offset" + (virtualTime - currentWorldTime));
+        shiftScheduledTicks(chunkScheduler, 0);
+        chunkScheduler.setTickConsumer((scheduler, tick) -> {});
+        ControlledSchedulerRegistry.register(chunkScheduler, region);
     }
 
     @SuppressWarnings("unchecked")
-    public <T> void releaseChunk(WorldTickScheduler<T> worldScheduler, RegionTickManager region, long currentWorldTime, long freezeStartTime, int stepped, boolean restoreWorldTime) {
+    public <T> void releaseChunk(WorldTickScheduler<T> worldScheduler, RegionTickManager region, long currentWorldTime, long freezeStartTime, int stepped) {
         WorldTickSchedulerAccessor<T> worldAccess = (WorldTickSchedulerAccessor<T>) worldScheduler;
         ChunkTickScheduler<T> chunkScheduler = worldAccess.getChunkTickSchedulers().get(chunkPosLong);
         if (chunkScheduler == null || ControlledSchedulerRegistry.getRegion(chunkScheduler) != region) return;
 
         ControlledSchedulerRegistry.unregister(chunkScheduler, region);
         chunkScheduler.setTickConsumer(worldAccess.getQueuedTickConsumer());
-        if (restoreWorldTime) {
-            shiftScheduledTicks(chunkScheduler, currentWorldTime - (freezeStartTime + stepped));
-        }
+        shiftScheduledTicks(chunkScheduler, currentWorldTime - (freezeStartTime + stepped));
 
         OrderedTick<T> nextTick = chunkScheduler.peekNextTick();
         if (nextTick != null) {
@@ -61,6 +62,16 @@ public class ChunkTickManager {
         }
     }
 
+    //区域已释放:把残留的虚拟时间线锚点换算回真实时间线(无注册守卫,供 vanilla 正常执行)
+    @SuppressWarnings("unchecked")
+    public <T> void releaseChunkToWorld(WorldTickScheduler<T> worldScheduler, RegionTickManager region, long currentWorldTime) {
+        WorldTickSchedulerAccessor<T> worldAccess = (WorldTickSchedulerAccessor<T>) worldScheduler;
+        ChunkTickScheduler<T> chunkScheduler = worldAccess.getChunkTickSchedulers().get(chunkPosLong);
+        if (chunkScheduler == null) return;
+        shiftScheduledTicks(chunkScheduler, currentWorldTime - (region.getStartTime() + region.getStepped()));
+    }
+
+    //计划刻触发时间偏移
     private static <T> void shiftScheduledTicks(ChunkTickScheduler<T> chunkScheduler, long offset) {
         if (offset == 0) return;
 
@@ -73,66 +84,6 @@ public class ChunkTickManager {
         for (OrderedTick<T> tick : shiftedTicks) {
             chunkScheduler.scheduleTick(tick);
         }
-    }
-
-
-    private static final int MAX_TICKS_PER_SCHEDULER = 65536;
-
-    public static <T> void tickScheduledTicks(
-            List<ChunkTickManager> chunks,
-            WorldTickScheduler<T> worldScheduler,
-            BiConsumer<BlockPos, T> ticker,
-            long virtualTrigger
-    ) {
-        WorldTickSchedulerAccessor<T> worldAccess = (WorldTickSchedulerAccessor<T>) worldScheduler;
-        Queue<ChunkTickScheduler<T>> tickableSchedulers = new PriorityQueue<>(
-                (first, second) -> OrderedTick.BASIC_COMPARATOR.compare(
-                        first.peekNextTick(), second.peekNextTick()));
-
-        for (ChunkTickManager chunk : chunks) {
-            ChunkTickScheduler<T> scheduler = worldAccess.getChunkTickSchedulers().get(chunk.chunkPosLong);
-            if (scheduler == null) continue;
-
-            OrderedTick<T> nextTick = scheduler.peekNextTick();
-            if (nextTick != null && nextTick.triggerTick() <= virtualTrigger) {
-                tickableSchedulers.add(scheduler);
-            }
-        }
-
-        List<OrderedTick<T>> ticksToRun = new ArrayList<>();
-        while (ticksToRun.size() < MAX_TICKS_PER_SCHEDULER && !tickableSchedulers.isEmpty()) {
-            ChunkTickScheduler<T> scheduler = tickableSchedulers.poll();
-            OrderedTick<T> tick = scheduler.pollNextTick();
-            if (tick == null) continue;
-            ticksToRun.add(tick);
-
-            OrderedTick<T> competingTick = peekNextTick(tickableSchedulers);
-            while (ticksToRun.size() < MAX_TICKS_PER_SCHEDULER) {
-                OrderedTick<T> nextTick = scheduler.peekNextTick();
-                if (nextTick == null || nextTick.triggerTick() > virtualTrigger
-                        || competingTick != null
-                        && OrderedTick.BASIC_COMPARATOR.compare(nextTick, competingTick) > 0) {
-                    break;
-                }
-
-                ticksToRun.add(scheduler.pollNextTick());
-            }
-
-            OrderedTick<T> nextTick = scheduler.peekNextTick();
-            if (ticksToRun.size() < MAX_TICKS_PER_SCHEDULER
-                    && nextTick != null && nextTick.triggerTick() <= virtualTrigger) {
-                tickableSchedulers.add(scheduler);
-            }
-        }
-
-        for (OrderedTick<T> tick : ticksToRun) {
-            ticker.accept(tick.pos(), tick.type());
-        }
-    }
-
-    private static <T> OrderedTick<T> peekNextTick(Queue<ChunkTickScheduler<T>> schedulers) {
-        ChunkTickScheduler<T> scheduler = schedulers.peek();
-        return scheduler == null ? null : scheduler.peekNextTick();
     }
 
 }

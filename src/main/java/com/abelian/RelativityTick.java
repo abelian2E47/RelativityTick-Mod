@@ -38,6 +38,7 @@ public class RelativityTick implements ModInitializer {
 	public static final Identifier REGION_ENTITY_SYNC_PACKET_ID = Identifier.of(MOD_ID, "region_entity_sync_packet");
     public static final Identifier PASSENGER_SYNC_PACKET_ID = Identifier.of(MOD_ID, "passenger_sync_packet");
     public static final Identifier REGION_TIME_PACKET_ID = Identifier.of(MOD_ID, "region_time_packet");
+    public static final Identifier SCHEDULED_TICK_DATA_PAYLOAD = Identifier.of(MOD_ID, "scheduled_tick_data_payload");
 
     private static final double REGION_TPS_RELATIVE_SEND_THRESHOLD = 0.01;
     private static final int REGION_TPS_STABLE_SEND_GT = 20;
@@ -55,6 +56,7 @@ public class RelativityTick implements ModInitializer {
         PayloadTypeRegistry.playS2C().register(RegionEntitySyncPayload.ID, RegionEntitySyncPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(PassengerSyncPayload.ID, PassengerSyncPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(RegionTimePayload.ID, RegionTimePayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(ScheduledTickDataPayload.ID, ScheduledTickDataPayload.CODEC);
 
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
             RelativityTickUtils.set(server);
@@ -75,8 +77,6 @@ public class RelativityTick implements ModInitializer {
 
         ServerChunkEvents.CHUNK_LOAD.register((world, chunk) ->
                 RegionsManager.onChunkLoad(world, chunk.getPos().toLong()));
-        ServerChunkEvents.CHUNK_UNLOAD.register((world, chunk) ->
-                RegionsManager.onChunkUnload(world, chunk.getPos().toLong()));
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
                 RegionsManager.syncAllRegions(handler.player));
 
@@ -223,7 +223,6 @@ public class RelativityTick implements ModInitializer {
             regionTickDurationNano += System.nanoTime() - tickStartNano;
             stepsTaken++;
             remainingSteps--;
-            region.stepRegionTime();
 
             if (consumePendingSteps && region.getPendingSteps() > 0) {
                 region.setPendingSteps(region.getPendingSteps() - 1);

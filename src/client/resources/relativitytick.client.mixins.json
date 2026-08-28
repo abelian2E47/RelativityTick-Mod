@@ -8,8 +8,8 @@
     "ClientWorldChunkDirectBlockEntityTickInvokerMixin",
     "ClientWorldAccessor",
     "ClientWorldMixin",
-    "EntityRenderDispatcherMixin",
-    "WorldRendererMixin"
+    "DebugRendererMixin",
+    "EntityRenderDispatcherMixin"
   ],
   "injectors": {
     "defaultRequire": 1

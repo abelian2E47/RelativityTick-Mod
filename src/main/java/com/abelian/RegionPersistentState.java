@@ -1,6 +1,5 @@
 package com.abelian;
 
-import com.abelian.regionTick.RegionTickManager;
 import net.minecraft.datafixer.DataFixTypes;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtElement;
@@ -96,32 +95,9 @@ public class RegionPersistentState extends PersistentState {
 
             if (chunks.isEmpty()) continue;
 
-            double rate = regionNbt.contains("rate") ? regionNbt.getDouble("rate") : 20.0;
-            double maxRegionCostMs = regionNbt.contains("tickDurationLimit ")
-                    ? regionNbt.getDouble("tickDurationLimit ")
-                    : regionNbt.contains("tickDurationLimit ") ? regionNbt.getDouble("tickDurationLimit ") : 10.0;
-            int priority = regionNbt.contains("regionPriority") ? regionNbt.getInt("regionPriority") : 1;
-            int regionTime = regionNbt.contains("regionTime") ? regionNbt.getInt("regionTime") : 0;
-            RegionTickManager.RegionState regionState = readRegionState(regionNbt);
-            boolean hasTimeline = regionNbt.contains("freezeStartTime") && regionNbt.contains("stepped");
-            long freezeStartTime = hasTimeline ? regionNbt.getLong("freezeStartTime") : 0L;
-            int stepped = hasTimeline ? regionNbt.getInt("stepped") : 0;
-            boolean disableHopperTick = regionNbt.getBoolean("disableHopperTick");
-            boolean disableEntityTick = regionNbt.getBoolean("disableEntityTick");
-            boolean disableObserverTick = regionNbt.getBoolean("disableObserverTick");
-            state.regions.put(id, new RegionData(dimension, chunks, rate, maxRegionCostMs, priority, regionState, regionTime, freezeStartTime, stepped, hasTimeline, disableHopperTick, disableEntityTick, disableObserverTick));
+            state.regions.put(id, new RegionData(dimension, chunks));
         }
         return state;
-    }
-
-    private static RegionTickManager.RegionState readRegionState(NbtCompound regionNbt) {
-        if (!regionNbt.contains("state")) return RegionTickManager.RegionState.RELEASED;
-
-        try {
-            return RegionTickManager.RegionState.valueOf(regionNbt.getString("state"));
-        } catch (IllegalArgumentException ignored) {
-            return RegionTickManager.RegionState.RELEASED;
-        }
     }
 
     @Override
@@ -133,16 +109,6 @@ public class RegionPersistentState extends PersistentState {
             regionNbt.putString("id", entry.getKey());
             regionNbt.putString("dimension", region.dimension().getValue().toString());
             regionNbt.putLongArray("chunks", region.chunks().stream().mapToLong(Long::longValue).toArray());
-            regionNbt.putDouble("rate", region.rate());
-            regionNbt.putDouble("tickDurationLimit ", region.tickDurationLimit());
-            regionNbt.putInt("regionPriority", region.regionPriority());
-            regionNbt.putString("state", region.state().name());
-            regionNbt.putLong("freezeStartTime", region.freezeStartTime());
-            regionNbt.putInt("regionTime", region.regionTime());
-            regionNbt.putInt("stepped", region.stepped());
-            regionNbt.putBoolean("disableHopperTick", region.disableHopperTick());
-            regionNbt.putBoolean("disableEntityTick", region.disableEntityTick());
-            regionNbt.putBoolean("disableObserverTick", region.disableObserverTick());
             regionList.add(regionNbt);
         }
 
@@ -159,14 +125,12 @@ public class RegionPersistentState extends PersistentState {
     }
 
     public void replaceRegions(Map<String, RegionData> regions) {
-        if (this.regions.equals(regions)) return;
-
         this.regions.clear();
         this.regions.putAll(regions);
         markDirty();
     }
 
-    public record RegionData(RegistryKey<World> dimension, Set<Long> chunks, double rate, double tickDurationLimit , int regionPriority, RegionTickManager.RegionState state, int regionTime, long freezeStartTime, int stepped, boolean hasTimeline, boolean disableHopperTick, boolean disableEntityTick, boolean disableObserverTick) {
+    public record RegionData(RegistryKey<World> dimension, Set<Long> chunks) {
         public RegionData {
             chunks = Set.copyOf(chunks);
         }

@@ -4,21 +4,25 @@ import com.abelian.RegionPersistentState;
 import com.abelian.config.RelativityTickConfig;
 import com.abelian.RegionTickContext;
 import com.abelian.ServerTickBridge;
+import com.abelian.network.ScheduledTickDataPayload;
+import com.abelian.network.ScheduledTickRecord;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.server.MinecraftServer;
 import com.abelian.RelativityTickUtils;
-import com.abelian.mixin.WorldAccessor;
+import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerChunkManager;
-import net.minecraft.world.chunk.BlockEntityTickInvoker;
-import java.util.Iterator;
+
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.function.BiConsumer;
+import java.util.PriorityQueue;
+import java.util.Queue;
 
 import net.minecraft.util.math.ChunkPos;
 import com.abelian.mixin.ServerChunkManagerAccessor;
-import com.abelian.mixin.ServerChunkLoadingManagerAccessor;
 import com.abelian.mixin.ServerWorldAccessor;
 import com.abelian.network.EntityStateRecord;
 import net.minecraft.block.Block;
@@ -32,12 +36,17 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.world.SpawnHelper;
 import net.minecraft.world.World;
-import net.minecraft.world.chunk.Chunk;
 import net.minecraft.world.chunk.WorldChunk;
 import net.minecraft.world.tick.WorldTickScheduler;
+import com.abelian.mixin.WorldTickSchedulerAccessor;
+import net.minecraft.world.tick.ChunkTickScheduler;
+import net.minecraft.world.tick.OrderedTick;
 
 
-public class RegionTickManager {
+public class    RegionTickManager {
+    private static final int MAX_SCHEDULED_TICK_RECORDS = 1024;
+    private static final int MAX_TICKS_EXECUTED_PER_STEP = 65536;
+
     public enum RegionState {
         RELEASED,
         FROZEN,
@@ -48,12 +57,11 @@ public class RegionTickManager {
     private final String id;
     private final Set<Long> chunkPositions;
     private final  ArrayList<ChunkTickManager> region = new ArrayList<>();
-    private long freezeStartTime = 0;
+    private long startTime = 0;
     private long currentWorldTime = 0;
     private int stepped = 0;
     private int pendingSteps = 0;
     private double rate = 20;
-    private int regionTime = 0;
     private double accumulator = 0.0;
     private double tickDurationLimit = 10.0;
     private int regionPriority = 1;
@@ -89,8 +97,8 @@ public class RegionTickManager {
 
         ChunkTickManager chunk = new ChunkTickManager(chunkPos);
         if (isControlled()) {
-            chunk.takeOverChunk(world.getBlockTickScheduler(), this, world.getTime());
-            chunk.takeOverChunk(world.getFluidTickScheduler(), this, world.getTime());
+            chunk.retakeOverChunk(world.getBlockTickScheduler(), this, world.getTime());
+            chunk.retakeOverChunk(world.getFluidTickScheduler(), this, world.getTime());
         }
         region.add(chunk);
         return true;
@@ -110,8 +118,8 @@ public class RegionTickManager {
         if (target != null) {
             if (isControlled()) {
                 long currentWorldTime = world.getTime();
-                target.releaseChunk(world.getBlockTickScheduler(), this, currentWorldTime, freezeStartTime, stepped);
-                target.releaseChunk(world.getFluidTickScheduler(), this, currentWorldTime, freezeStartTime, stepped);
+                target.releaseChunk(world.getBlockTickScheduler(), this, currentWorldTime, startTime, stepped);
+                target.releaseChunk(world.getFluidTickScheduler(), this, currentWorldTime, startTime, stepped);
             }
             region.remove(target);
         }
@@ -119,27 +127,34 @@ public class RegionTickManager {
         return true;
     }
 
-    public <T> void takeOverRegion(WorldTickScheduler<T> worldScheduler, long currentWorldTime) {
+    public <T> void takeOverRegion(WorldTickScheduler<T> worldScheduler) {
         for (ChunkTickManager chunk : region){
-            chunk.takeOverChunk(worldScheduler, this, currentWorldTime);
+            chunk.takeOverChunk(worldScheduler, this);
         }
     }
 
     public <T> void releaseRegion(WorldTickScheduler<T> worldScheduler, long currentWorldTime) {
-        releaseRegion(worldScheduler, currentWorldTime, true);
-    }
-
-    public <T> void releaseRegion(WorldTickScheduler<T> worldScheduler, long currentWorldTime, boolean restoreWorldTime) {
         for (ChunkTickManager chunk : region) {
-            chunk.releaseChunk(worldScheduler, this, currentWorldTime, freezeStartTime, stepped, restoreWorldTime);
+            chunk.releaseChunk(worldScheduler, this, currentWorldTime, startTime, stepped);
         }
     }
 
     public void takeOverChunk(long chunkPos, ServerWorld world) {
         for (ChunkTickManager chunk : region) {
             if (chunk.getChunkPosLong() != chunkPos) continue;
-            chunk.takeOverChunk(world.getBlockTickScheduler(), this, world.getTime());
-            chunk.takeOverChunk(world.getFluidTickScheduler(), this, world.getTime());
+            chunk.takeOverChunk(world.getBlockTickScheduler(), this);
+            chunk.takeOverChunk(world.getFluidTickScheduler(), this);
+            return;
+        }
+    }
+
+    //区域已释放:把区块里残留的虚拟时间线锚点换算回真实时间线,交给 vanilla 执行
+    public void releaseChunkToWorld(long chunkPos, ServerWorld world) {
+        if (getStartTime() == 0 && getStepped() == 0) return;
+        for (ChunkTickManager chunk : region) {
+            if (chunk.getChunkPosLong() != chunkPos) continue;
+            chunk.releaseChunkToWorld(world.getBlockTickScheduler(), this, world.getTime());
+            chunk.releaseChunkToWorld(world.getFluidTickScheduler(), this, world.getTime());
             return;
         }
     }
@@ -147,22 +162,16 @@ public class RegionTickManager {
     public void releaseChunk(long chunkPos, ServerWorld world) {
         for (ChunkTickManager chunk : region) {
             if (chunk.getChunkPosLong() != chunkPos) continue;
-            chunk.releaseChunk(world.getBlockTickScheduler(), this, world.getTime(), freezeStartTime, stepped);
-            chunk.releaseChunk(world.getFluidTickScheduler(), this, world.getTime(), freezeStartTime, stepped);
+            chunk.releaseChunk(world.getBlockTickScheduler(), this, world.getTime(), startTime, stepped);
+            chunk.releaseChunk(world.getFluidTickScheduler(), this, world.getTime(), startTime, stepped);
             return;
         }
     }
 
-    public void setFreezeStartTime(long time) {
-        this.freezeStartTime = time;
+    public void setStartTime(long time) {
+        this.startTime = time;
         this.stepped = 0;
         this.currentWorldTime = time;
-    }
-
-    public void restoreTimeline(long freezeStartTime, int stepped, long currentWorldTime) {
-        this.freezeStartTime = freezeStartTime;
-        this.stepped = stepped;
-        this.currentWorldTime = currentWorldTime;
     }
 
     public void setCurrentWorldTime(long time) {
@@ -188,7 +197,7 @@ public class RegionTickManager {
 
 
     public long getVirtualTime() {
-        return freezeStartTime + stepped;
+        return startTime + stepped;
     }
 
     public void tickRegion(ServerWorld world, WorldTickScheduler<Block> blockScheduler, BiConsumer<BlockPos, Block> blockTicker, WorldTickScheduler<Fluid> fluidScheduler, BiConsumer<BlockPos, Fluid> fluidTicker) {
@@ -196,17 +205,19 @@ public class RegionTickManager {
 
         setCurrentWorldTime(world.getTime());
         stepped++;
-        long virtualTime = freezeStartTime + stepped;
+        long virtualTime = startTime + stepped;
         RegionTickContext.begin(world, virtualTime);
         try {
-            BiConsumer<BlockPos, Block> effectiveBlockTicker = disableObserverTick
+            BiConsumer<BlockPos, Block> filterBlockTicker = disableObserverTick
                     ? (pos, block) -> {
                         if (block != Blocks.OBSERVER) {
                             blockTicker.accept(pos, block);
                         }
                     }
                     : blockTicker;
-            tickScheduledTicks(blockScheduler, effectiveBlockTicker, fluidScheduler, fluidTicker, virtualTime);
+            List<ScheduledTickRecord> blockRecords = tickScheduledTicks(blockScheduler, filterBlockTicker, virtualTime);
+            List<ScheduledTickRecord> fluidRecords = tickScheduledTicks(fluidScheduler, fluidTicker, virtualTime);
+            sendScheduledTicks(blockRecords, fluidRecords);
             tickChunkWorld(world);
             RegionBlockEventProcessor.process(world, this);
             this.tickEntities(world);
@@ -288,17 +299,109 @@ public class RegionTickManager {
     }
 
 
-    private void tickScheduledTicks(WorldTickScheduler<Block> blockScheduler, BiConsumer<BlockPos, Block> blockTicker, WorldTickScheduler<Fluid> fluidScheduler, BiConsumer<BlockPos, Fluid> fluidTicker, long virtualTime) {
-        ChunkTickManager.tickScheduledTicks(region, blockScheduler, blockTicker, virtualTime);
-        ChunkTickManager.tickScheduledTicks(region, fluidScheduler, fluidTicker, virtualTime);
+    private <T> List<ScheduledTickRecord> tickScheduledTicks(WorldTickScheduler<T> worldScheduler, BiConsumer<BlockPos, T> ticker, long virtualTrigger) {
+        WorldTickSchedulerAccessor<T> worldAccess = (WorldTickSchedulerAccessor<T>) worldScheduler;
+        //跨区块按 vanilla 语义排序：先触发时间，再优先级（越小越优先），再子顺序
+        Queue<ChunkTickScheduler<T>> tickableSchedulers = new PriorityQueue<>(
+                (first, second) -> OrderedTick.TRIGGER_TICK_COMPARATOR
+                        .compare(first.peekNextTick(), second.peekNextTick()));
+
+        List<ScheduledTickRecord> scheduledTicks = collectScheduledTicks(worldScheduler);
+
+        for (ChunkTickManager chunk : region) {
+            ChunkTickScheduler<T> scheduler = worldAccess.getChunkTickSchedulers().get(chunk.getChunkPosLong());
+            if (scheduler == null) continue;
+
+            OrderedTick<T> nextTick = scheduler.peekNextTick();
+            if (nextTick == null) continue;
+
+            if (nextTick.triggerTick() <= virtualTrigger) {
+                tickableSchedulers.add(scheduler);
+            }
+        }
+
+        //poll 后立即执行（与 vanilla 交替执行一致）：执行中新调度的到期 tick 可被本轮继续执行，避免 1gt 连续调度慢一拍
+        int executedTicks = 0;
+        while (!tickableSchedulers.isEmpty() && executedTicks < MAX_TICKS_EXECUTED_PER_STEP) {
+            ChunkTickScheduler<T> scheduler = tickableSchedulers.poll();
+            OrderedTick<T> tick = scheduler.pollNextTick();
+            if (tick == null) continue;
+
+            ticker.accept(tick.pos(), tick.type());
+            executedTicks++;
+
+            OrderedTick<T> competingTick = peekNextTick(tickableSchedulers);
+            while (executedTicks < MAX_TICKS_EXECUTED_PER_STEP) {
+                OrderedTick<T> nextTick = scheduler.peekNextTick();
+                if (nextTick == null || nextTick.triggerTick() > virtualTrigger
+                        || competingTick != null
+                        && OrderedTick.TRIGGER_TICK_COMPARATOR.compare(nextTick, competingTick) > 0) {
+                    break;
+                }
+
+                OrderedTick<T> executed = scheduler.pollNextTick();
+                if (executed == null) break;
+                ticker.accept(executed.pos(), executed.type());
+                executedTicks++;
+            }
+
+            OrderedTick<T> nextTick = scheduler.peekNextTick();
+            if (nextTick != null && nextTick.triggerTick() <= virtualTrigger) {
+                tickableSchedulers.add(scheduler);
+            }
+        }
+
+        return scheduledTicks;
+    }
+
+    //收集区域调度器中的全部计划刻（不执行），用于 take over 后的即时发包
+    private <T> List<ScheduledTickRecord> collectScheduledTicks(WorldTickScheduler<T> worldScheduler) {
+        WorldTickSchedulerAccessor<T> worldAccess = (WorldTickSchedulerAccessor<T>) worldScheduler;
+        List<ScheduledTickRecord> scheduledTicks = new ArrayList<>();
+        for (ChunkTickManager chunk : region) {
+            ChunkTickScheduler<T> scheduler = worldAccess.getChunkTickSchedulers().get(chunk.getChunkPosLong());
+            if (scheduler == null || scheduler.peekNextTick() == null) continue;
+
+            //遍历区块调度器全部计划刻，发包
+            Iterator<OrderedTick<T>> tickIterator = scheduler.getQueueAsStream().iterator();
+            while (tickIterator.hasNext() && scheduledTicks.size() < MAX_SCHEDULED_TICK_RECORDS) {
+                OrderedTick<T> tick = tickIterator.next();
+                scheduledTicks.add(new ScheduledTickRecord(
+                        tick.pos(), tick.triggerTick(), tick.subTickOrder(), tick.priority().getIndex()));
+            }
+        }
+        return scheduledTicks;
+    }
+
+    //区域被 take over 后立即发送计划刻快照，供客户端渲染
+    public void sendScheduledTickSnapshot(ServerWorld world) {
+        if (!isControlled()) return;
+        sendScheduledTicks(collectScheduledTicks(world.getBlockTickScheduler()), collectScheduledTicks(world.getFluidTickScheduler()));
+    }
+
+    private static void sendScheduledTicks(List<ScheduledTickRecord> blockRecords, List<ScheduledTickRecord> fluidRecords) {
+        if (!RelativityTickConfig.isScheduledTickSendEnabled()) return;
+        if (blockRecords.isEmpty() && fluidRecords.isEmpty()) return;
+
+        List<ScheduledTickRecord> allRecords = new ArrayList<>(blockRecords.size() + fluidRecords.size());
+        allRecords.addAll(blockRecords);
+        allRecords.addAll(fluidRecords);
+
+        ScheduledTickDataPayload payload = new ScheduledTickDataPayload(allRecords);
+        for (ServerPlayerEntity player : RelativityTickUtils.getServer().getPlayerManager().getPlayerList()) {
+            ServerPlayNetworking.send(player, payload);
+        }
+    }
+
+    private static <T> OrderedTick<T> peekNextTick(Queue<ChunkTickScheduler<T>> schedulers) {
+        ChunkTickScheduler<T> scheduler = schedulers.peek();
+        return scheduler == null ? null : scheduler.peekNextTick();
     }
 
     private void tickChunkWorld(ServerWorld world) {
         if (!RelativityTickConfig.isChunkTickEnabled()) return;
 
         ServerChunkManagerAccessor managerAccessor = (ServerChunkManagerAccessor) world.getChunkManager();
-        ServerChunkLoadingManagerAccessor loadingAccessor =
-                (ServerChunkLoadingManagerAccessor) managerAccessor.getChunkLoadingManager();
 
         SpawnHelper.Info spawnInfo = ServerTickBridge.getSpawnInfo(world);
         boolean doMobSpawning = world.getGameRules().getBoolean(net.minecraft.world.GameRules.DO_MOB_SPAWNING);
@@ -322,7 +425,7 @@ public class RegionTickManager {
             if (!world.shouldTick(chunkPos)) continue;
             //区块时间
             chunk.increaseInhabitedTime(1L);
-            //生成逻辑
+            //生物生成
             if (!spawnGroups.isEmpty()
                     && world.getWorldBorder().contains(chunkPos)) {
                 SpawnHelper.spawn(world, chunk, spawnInfo, spawnGroups);
@@ -378,8 +481,8 @@ public class RegionTickManager {
 
     public boolean isStepping(){ return pendingSteps > 0;}
 
-    public long getFreezeStartTime(){
-        return freezeStartTime;
+    public long getStartTime(){
+        return startTime;
     }
 
     public int getStepped(){
@@ -403,21 +506,7 @@ public class RegionTickManager {
     }
 
     public RegionPersistentState.RegionData toPersistentData() {
-        return new RegionPersistentState.RegionData(
-                dimension,
-                chunkPositions,
-                rate,
-                tickDurationLimit,
-                regionPriority,
-                state,
-                regionTime,
-                freezeStartTime,
-                stepped,
-                true,
-                disableHopperTick,
-                disableEntityTick,
-                disableObserverTick
-        );
+        return new RegionPersistentState.RegionData(dimension, chunkPositions);
     }
 
     public Set<Long> getChunkPositions() {
@@ -433,12 +522,6 @@ public class RegionTickManager {
     public void  setReachTickDurationLimit(boolean reachTickDurationLimit) { this.reachTickDurationLimit = reachTickDurationLimit; }
 
     public void recordTickDuration(long totalNanoInTick) {this.regionTickDuration = (float)(totalNanoInTick / 1_000_000.0);}
-
-    public void stepRegionTime(){regionTime++;}
-
-    public int getRegionTime(){return regionTime;}
-
-    public void setRegionTime(int regionTime) { this.regionTime = regionTime; }
 
     public void recordGlobalTickSteps(int stepsTaken) {
         this.recentStepTotal -= this.recentStepCounts[this.recentStepCursor];

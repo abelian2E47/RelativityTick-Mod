@@ -148,13 +148,35 @@ public class ServerCommands {
                                 .then(CommandManager.argument("value", BoolArgumentType.bool())
                                         .requires(source -> source.hasPermissionLevel(2))
                                         .executes(ctx -> setChunkTickEnabled(
-                                                ctx.getSource(), BoolArgumentType.getBool(ctx, "value"))))));
+                                                ctx.getSource(), BoolArgumentType.getBool(ctx, "value"))))))
+                .then(CommandManager.literal("scheduledTickSend")
+                        .executes(ctx -> showScheduledTickSendConfig(ctx.getSource()))
+                        .then(CommandManager.argument("value", BoolArgumentType.bool())
+                                .requires(source -> source.hasPermissionLevel(2))
+                                .executes(ctx -> setScheduledTickSendEnabled(
+                                        ctx.getSource(), BoolArgumentType.getBool(ctx, "value")))));
     }
 
     private static int showChunkTickConfig(ServerCommandSource source) {
         source.sendFeedback(() -> Text.translatable("relativitytick.command.config.chunk_tick",
                 RelativityTickConfig.isChunkTickEnabled()), false);
         return 1;
+    }
+
+    private static int showScheduledTickSendConfig(ServerCommandSource source) {
+        source.sendFeedback(() -> Text.translatable("relativitytick.command.config.scheduled_tick_send",
+                RelativityTickConfig.isScheduledTickSendEnabled()), false);
+        return 1;
+    }
+
+    private static int setScheduledTickSendEnabled(ServerCommandSource source, boolean value) {
+        try {
+            RelativityTickConfig.setScheduledTickSendEnabled(value);
+            return showScheduledTickSendConfig(source);
+        } catch (IOException e) {
+            source.sendError(Text.translatable("relativitytick.command.error.config_save_failed").formatted(Formatting.RED));
+            return 0;
+        }
     }
 
     private static int showMaxMsptConfig(ServerCommandSource source) {
@@ -176,6 +198,7 @@ public class ServerCommands {
     private static int showRelativityTickConfig(ServerCommandSource source) {
         showMaxMsptConfig(source);
         showChunkTickConfig(source);
+        showScheduledTickSendConfig(source);
         return 1;
     }
 
@@ -260,10 +283,12 @@ public class ServerCommands {
         WorldTickScheduler<Block> blockScheduler = rcc.world.getBlockTickScheduler();
         WorldTickScheduler<Fluid> fluidScheduler = rcc.world.getFluidTickScheduler();
 
-        rcc.manager.setFreezeStartTime(rcc.world.getTime());
-        rcc.manager.takeOverRegion(blockScheduler, rcc.world.getTime());
-        rcc.manager.takeOverRegion(fluidScheduler, rcc.world.getTime());
+        rcc.manager.setStartTime(rcc.world.getTime());
+        rcc.manager.takeOverRegion(blockScheduler);
+        rcc.manager.takeOverRegion(fluidScheduler);
         rcc.manager.setState(RegionState.FROZEN);
+        //接管后立即发包，客户端即可渲染计划刻
+        rcc.manager.sendScheduledTickSnapshot(rcc.world);
     }
 
     private static void release(RegionCommandContext rcc) {
@@ -432,8 +457,9 @@ public class ServerCommands {
 
         source.sendFeedback(() -> Text.translatable("relativitytick.command.status.header",
                 Text.literal(id).formatted(Formatting.AQUA)), false);
-        source.sendFeedback(() -> Text.translatable("relativitytick.command.status.region_time",
-                Text.literal(String.valueOf(mgr.getRegionTime())).formatted(Formatting.AQUA)), false);
+        source.sendFeedback(() -> Text.translatable("relativitytick.command.status.timeline",
+                Text.literal(String.valueOf(mgr.getStartTime())).formatted(Formatting.AQUA),
+                Text.literal(String.valueOf(mgr.getStepped())).formatted(Formatting.AQUA)), false);
         source.sendFeedback(() -> Text.translatable("relativitytick.command.status.state",
                 Text.translatable(stateKey).formatted(stateFormatting(stateKey))), false);
         source.sendFeedback(() -> Text.translatable("relativitytick.command.status.chunks",
