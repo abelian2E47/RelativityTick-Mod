@@ -30,15 +30,13 @@ public class ChunkTickManager {
         worldAccess.getNextTriggerTickByChunkPos().remove(chunkPosLong);
     }
 
-    //重新加载游戏时恢复区块状态
+    //重载游戏时恢复选区
     @SuppressWarnings("unchecked")
     public <T> void retakeOverChunk(WorldTickScheduler<T> worldScheduler, RegionTickManager region, long currentWorldTime) {
         WorldTickSchedulerAccessor<T> worldAccess = (WorldTickSchedulerAccessor<T>) worldScheduler;
         ChunkTickScheduler<T> chunkScheduler = worldAccess.getChunkTickSchedulers().get(chunkPosLong);
         if (chunkScheduler == null || ControlledSchedulerRegistry.getRegion(chunkScheduler) == region) return;
 
-        long virtualTime = region.getStartTime() + region.getStepped();
-        System.out.println("offset" + (virtualTime - currentWorldTime));
         shiftScheduledTicks(chunkScheduler, 0);
         chunkScheduler.setTickConsumer((scheduler, tick) -> {});
         ControlledSchedulerRegistry.register(chunkScheduler, region);
@@ -62,7 +60,6 @@ public class ChunkTickManager {
         }
     }
 
-    //区域已释放:把残留的虚拟时间线锚点换算回真实时间线(无注册守卫,供 vanilla 正常执行)
     @SuppressWarnings("unchecked")
     public <T> void releaseChunkToWorld(WorldTickScheduler<T> worldScheduler, RegionTickManager region, long currentWorldTime) {
         WorldTickSchedulerAccessor<T> worldAccess = (WorldTickSchedulerAccessor<T>) worldScheduler;

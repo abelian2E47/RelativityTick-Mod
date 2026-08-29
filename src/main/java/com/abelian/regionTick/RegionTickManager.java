@@ -64,7 +64,6 @@ public class    RegionTickManager {
     private double rate = 20;
     private double accumulator = 0.0;
     private double tickDurationLimit = 10.0;
-    private int regionPriority = 1;
     private boolean disableHopperTick = false;
     private boolean disableEntityTick = false;
     private boolean disableObserverTick = false;
@@ -148,22 +147,12 @@ public class    RegionTickManager {
         }
     }
 
-    //区域已释放:把区块里残留的虚拟时间线锚点换算回真实时间线,交给 vanilla 执行
     public void releaseChunkToWorld(long chunkPos, ServerWorld world) {
         if (getStartTime() == 0 && getStepped() == 0) return;
         for (ChunkTickManager chunk : region) {
             if (chunk.getChunkPosLong() != chunkPos) continue;
             chunk.releaseChunkToWorld(world.getBlockTickScheduler(), this, world.getTime());
             chunk.releaseChunkToWorld(world.getFluidTickScheduler(), this, world.getTime());
-            return;
-        }
-    }
-
-    public void releaseChunk(long chunkPos, ServerWorld world) {
-        for (ChunkTickManager chunk : region) {
-            if (chunk.getChunkPosLong() != chunkPos) continue;
-            chunk.releaseChunk(world.getBlockTickScheduler(), this, world.getTime(), startTime, stepped);
-            chunk.releaseChunk(world.getFluidTickScheduler(), this, world.getTime(), startTime, stepped);
             return;
         }
     }
@@ -176,10 +165,6 @@ public class    RegionTickManager {
 
     public void setCurrentWorldTime(long time) {
         this.currentWorldTime = time;
-    }
-
-    public long getCurrentWorldTime() {
-        return currentWorldTime;
     }
 
     public long getSchedulingTime() {
@@ -301,7 +286,6 @@ public class    RegionTickManager {
 
     private <T> List<ScheduledTickRecord> tickScheduledTicks(WorldTickScheduler<T> worldScheduler, BiConsumer<BlockPos, T> ticker, long virtualTrigger) {
         WorldTickSchedulerAccessor<T> worldAccess = (WorldTickSchedulerAccessor<T>) worldScheduler;
-        //跨区块按 vanilla 语义排序：先触发时间，再优先级（越小越优先），再子顺序
         Queue<ChunkTickScheduler<T>> tickableSchedulers = new PriorityQueue<>(
                 (first, second) -> OrderedTick.TRIGGER_TICK_COMPARATOR
                         .compare(first.peekNextTick(), second.peekNextTick()));
@@ -320,7 +304,6 @@ public class    RegionTickManager {
             }
         }
 
-        //poll 后立即执行（与 vanilla 交替执行一致）：执行中新调度的到期 tick 可被本轮继续执行，避免 1gt 连续调度慢一拍
         int executedTicks = 0;
         while (!tickableSchedulers.isEmpty() && executedTicks < MAX_TICKS_EXECUTED_PER_STEP) {
             ChunkTickScheduler<T> scheduler = tickableSchedulers.poll();
@@ -354,7 +337,6 @@ public class    RegionTickManager {
         return scheduledTicks;
     }
 
-    //收集区域调度器中的全部计划刻（不执行），用于 take over 后的即时发包
     private <T> List<ScheduledTickRecord> collectScheduledTicks(WorldTickScheduler<T> worldScheduler) {
         WorldTickSchedulerAccessor<T> worldAccess = (WorldTickSchedulerAccessor<T>) worldScheduler;
         List<ScheduledTickRecord> scheduledTicks = new ArrayList<>();
@@ -362,7 +344,7 @@ public class    RegionTickManager {
             ChunkTickScheduler<T> scheduler = worldAccess.getChunkTickSchedulers().get(chunk.getChunkPosLong());
             if (scheduler == null || scheduler.peekNextTick() == null) continue;
 
-            //遍历区块调度器全部计划刻，发包
+            //收集全部计划刻，发包
             Iterator<OrderedTick<T>> tickIterator = scheduler.getQueueAsStream().iterator();
             while (tickIterator.hasNext() && scheduledTicks.size() < MAX_SCHEDULED_TICK_RECORDS) {
                 OrderedTick<T> tick = tickIterator.next();
@@ -455,9 +437,6 @@ public class    RegionTickManager {
 
     public void setMaxRegionCostMs(double maxRegionCostMs) {this.tickDurationLimit = Math.max(1.0, maxRegionCostMs);}
 
-    public int getRegionPriority() {return regionPriority;}
-
-    public void setRegionPriority(int regionPriority) {this.regionPriority = Math.max(1, regionPriority);}
 
     public boolean isDisableHopperTick() { return disableHopperTick; }
 

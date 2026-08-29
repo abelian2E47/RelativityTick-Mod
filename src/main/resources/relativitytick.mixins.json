@@ -9,6 +9,7 @@
     "EntityMixin",
     "ServerChunkLoadingManagerAccessor",
     "ServerChunkManagerAccessor",
+    "ServerChunkManagerInhabitedTimeMixin",
     "ServerEntityManagerAccessor",
     "ServerWorldAccessor",
     "ServerWorldBlockEventMixin",

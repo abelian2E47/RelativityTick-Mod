@@ -87,10 +87,6 @@ public class ServerCommands {
                                         .then(CommandManager.literal("disable")
                                                 .executes(ctx -> setSetting(RegionCommandContext.of(ctx), StringArgumentType.getString(ctx, "setting"), true))))))
                 .then(CommandManager.literal("parameter")
-                        .then(CommandManager.literal("priority")
-                                .then(regionId()
-                                        .then(CommandManager.argument("value", IntegerArgumentType.integer(1))
-                                                .executes(ctx -> setPriority(RegionCommandContext.of(ctx), IntegerArgumentType.getInteger(ctx, "value"))))))
                         .then(CommandManager.literal("tickDurationLimit")
                                 .then(regionId()
                                         .then(CommandManager.argument("value", DoubleArgumentType.doubleArg(1.0))
@@ -373,17 +369,6 @@ public class ServerCommands {
         return 1;
     }
 
-    private static int setPriority(RegionCommandContext rcc, int priority) {
-        if (rcc.isInvalid()) return 0;
-        if (!RegionsManager.isPriorityAvailable(priority, rcc.id)) {
-            rcc.source.sendError(Text.translatable("relativitytick.command.error.priority_used", priority).formatted(Formatting.RED));
-            return 0;
-        }
-
-        RegionsManager.setRegionPriority(rcc.id, priority);
-        sendFeedback(rcc.source, rcc.id, "relativitytick.command.region.priority_set", priority);
-        return 1;
-    }
 
     private static int setTickDurationLimit(RegionCommandContext rcc, double tickDurationLimit) {
         if (rcc.isInvalid()) return 0;
@@ -438,7 +423,7 @@ public class ServerCommands {
             return 0;
         }
 
-        RegionsManager.getRegionIdsByPriority().forEach(id -> sendRegionStatus(source, id, RegionsManager.getRegion(id)));
+        RegionsManager.getRegionIdsInOrder().forEach(id -> sendRegionStatus(source, id, RegionsManager.getRegion(id)));
         return 1;
     }
 
@@ -465,8 +450,6 @@ public class ServerCommands {
         source.sendFeedback(() -> Text.translatable("relativitytick.command.status.chunks",
                 Text.literal(String.valueOf(mgr.getChunkPositions().size())).formatted(Formatting.AQUA)), false);
 
-        source.sendFeedback(() -> Text.translatable("relativitytick.command.status.priority",
-                Text.literal(String.valueOf(mgr.getRegionPriority())).formatted(Formatting.GOLD)), false);
         double regionTickDuration = mgr.getRegionTickDuration();
         double regionTickDurationLimit = mgr.getTickDurationLimit();
         double costRatio = regionTickDuration / regionTickDurationLimit;

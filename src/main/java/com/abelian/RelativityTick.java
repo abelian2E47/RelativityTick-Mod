@@ -93,7 +93,7 @@ public class RelativityTick implements ModInitializer {
         ServerTickEvents.END_SERVER_TICK.register(server -> ServerTickBridge.beginRegionTickBatch());
         //step
         ServerTickEvents.END_SERVER_TICK.register(server -> {
-            for (String id : RegionsManager.getRegionIdsByPriority()) {
+            for (String id : RegionsManager.getRegionIdsInOrder()) {
                 RegionTickManager region = RegionsManager.getRegion(id);
                 ServerWorld world = server.getWorld(region.getDimension());
                 if (world == null) continue;
@@ -131,7 +131,7 @@ public class RelativityTick implements ModInitializer {
 
         //running
         ServerTickEvents.END_SERVER_TICK.register(server -> {
-            for (String id : RegionsManager.getRegionIdsByPriority()) {
+            for (String id : RegionsManager.getRegionIdsInOrder()) {
                 RegionTickManager region = RegionsManager.getRegion(id);
                 if (!region.isRunning() || !region.isControlled()) continue;
 
@@ -152,7 +152,7 @@ public class RelativityTick implements ModInitializer {
         });
 
         ServerTickEvents.END_SERVER_TICK.register(server -> {
-            for (String id : RegionsManager.getRegionIdsByPriority()) {
+            for (String id : RegionsManager.getRegionIdsInOrder()) {
                 RegionTickManager region = RegionsManager.getRegion(id);
                 ServerWorld world = server.getWorld(region.getDimension());
                 if (world == null || !region.isControlled()) continue;

@@ -155,16 +155,29 @@ public class ClientCommand {
         if (!RelativityTickClient.selectChunks.isEmpty()) {
             Set<Long> chunksToAdd = new HashSet<>(RelativityTickClient.selectChunks);
             int added = RegionsManager.addChunksToRegion(id, chunksToAdd, world);
+            int skipped = chunksToAdd.size() - added;
             RelativityTickClient.selectChunks.clear();
             RelativityTickClient.currentState = RelativityTickClient.SelectionState.OFF;
+            if (added == 0) {
+                source.sendError(Text.translatable("relativitytick.command.client.error.all_chunks_owned").formatted(Formatting.RED));
+                return 0;
+            }
             source.sendFeedback(() -> Text.translatable("relativitytick.command.client.selected_chunks_added",
                     Text.literal(String.valueOf(added)).formatted(Formatting.GOLD),
                     Text.literal(id).formatted(Formatting.AQUA)), false);
+            if (skipped > 0) {
+                source.sendFeedback(() -> Text.translatable("relativitytick.command.client.chunks_skipped_owned",
+                        Text.literal(String.valueOf(skipped)).formatted(Formatting.GOLD)), false);
+            }
             return 1;
         }
 
         ChunkPos chunkPos = getSourceChunkPos(source);
-        RegionsManager.addChunkToRegion(id, chunkPos.toLong(), world);
+        if (!RegionsManager.addChunkToRegion(id, chunkPos.toLong(), world)) {
+            source.sendError(Text.translatable("relativitytick.command.client.error.chunk_owned",
+                    Text.literal(chunkPos.x + " " + chunkPos.z).formatted(Formatting.GOLD)).formatted(Formatting.RED));
+            return 0;
+        }
         source.sendFeedback(() -> Text.translatable("relativitytick.command.client.chunk_added",
                 Text.literal(chunkPos.x + " " + chunkPos.z).formatted(Formatting.GOLD),
                 Text.literal(id).formatted(Formatting.AQUA)), false);
