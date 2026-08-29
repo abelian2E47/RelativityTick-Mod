@@ -69,6 +69,9 @@ public class    RegionTickManager {
     private boolean disableObserverTick = false;
     private RegionState state = RegionState.RELEASED;
     private boolean scheduledTicksDirty = true;
+    //区域全部计划刻锚点是否已在真实时间线(已 releaseRegion 或从未接管)。
+    //用于 releaseChunkToWorld 守卫:release 命令不重置 startTime,不能靠 startTime==0 判断
+    private boolean anchorInRealTime = false;
 
     private static final int TPS_AVERAGE_WINDOW_GT = 100;
     private final int[] recentStepCounts = new int[TPS_AVERAGE_WINDOW_GT];
@@ -97,8 +100,10 @@ public class    RegionTickManager {
 
         ChunkTickManager chunk = new ChunkTickManager(chunkPos);
         if (isControlled()) {
-            chunk.retakeOverChunk(world.getBlockTickScheduler(), this, world.getTime());
-            chunk.retakeOverChunk(world.getFluidTickScheduler(), this, world.getTime());
+            //区块当前按真实时间线运行,接管进区域需换算到虚拟时间线(当前虚拟时间-当前真实时间)
+            long reanchorOffset = getVirtualTime() - world.getTime();
+            chunk.retakeOverChunk(world.getBlockTickScheduler(), this, reanchorOffset);
+            chunk.retakeOverChunk(world.getFluidTickScheduler(), this, reanchorOffset);
             markScheduledTicksDirty();
         }
         region.add(chunk);
@@ -139,20 +144,46 @@ public class    RegionTickManager {
         for (ChunkTickManager chunk : region) {
             chunk.releaseChunk(worldScheduler, this, currentWorldTime, startTime, stepped);
         }
+        //全部区块已换算回真实时间线,后续 releaseChunkToWorld 不再平移(修复 S3 二次平移)
+        this.anchorInRealTime = true;
     }
 
     public void takeOverChunk(long chunkPos, ServerWorld world) {
         for (ChunkTickManager chunk : region) {
             if (chunk.getChunkPosLong() != chunkPos) continue;
-            chunk.takeOverChunk(world.getBlockTickScheduler(), this);
-            chunk.takeOverChunk(world.getFluidTickScheduler(), this);
+            //区块重载后 restore:disable(真实时间) 物化的锚点由 ChunkTickSchedulerMixin 在 disable 尾
+            //换算回虚拟时间;这里传入偏移仅覆盖"队列已物化"的路径(如 add 时),空队列时平移为空操作
+            long reanchorOffset = getVirtualTime() - world.getTime();
+            chunk.retakeOverChunk(world.getBlockTickScheduler(), this, reanchorOffset);
+            chunk.retakeOverChunk(world.getFluidTickScheduler(), this, reanchorOffset);
             markScheduledTicksDirty();
             return;
         }
     }
 
+    //区块卸载时把计划刻锚点换算回真实时间线(releaseChunk 同语义),保证落盘 delay 是虚拟相对延迟;
+    //区块仍属于区域,重载时由 retakeOverChunk 换算回虚拟时间
+    public void detachChunk(long chunkPos, ServerWorld world) {
+        for (ChunkTickManager chunk : region) {
+            if (chunk.getChunkPosLong() != chunkPos) continue;
+            chunk.releaseChunk(world.getBlockTickScheduler(), this, world.getTime(), startTime, stepped);
+            chunk.releaseChunk(world.getFluidTickScheduler(), this, world.getTime(), startTime, stepped);
+            //换算改变了计划刻队列,必须标记区块待存:否则 autosave 后无方块变更的区块卸载时
+            //tryMarkSaved 会跳过序列化,磁盘上残留旧 autosave 的虚拟锚点 delay
+            WorldChunk worldChunk = world.getChunkManager().getWorldChunk(ChunkPos.getPackedX(chunkPos), ChunkPos.getPackedZ(chunkPos));
+            if (worldChunk != null) {
+                worldChunk.markNeedsSaving();
+            }
+            return;
+        }
+    }
+
     public void releaseChunkToWorld(long chunkPos, ServerWorld world) {
-        if (getStartTime() == 0 && getStepped() == 0) return;
+        //已释放(锚点已在真实时间线)或从未接管过(startTime==0)的区块无需换算;
+        //守卫不能只看 startTime:release 命令不重置 startTime,已释放区域重载时二次平移会额外推迟计划刻
+        if (anchorInRealTime || (getStartTime() == 0 && getStepped() == 0)) return;
+        //本次平移后锚点即回到真实时间线,后续任何区块重载都不再平移
+        this.anchorInRealTime = true;
         for (ChunkTickManager chunk : region) {
             if (chunk.getChunkPosLong() != chunkPos) continue;
             chunk.releaseChunkToWorld(world.getBlockTickScheduler(), this, world.getTime());
@@ -165,6 +196,7 @@ public class    RegionTickManager {
         this.startTime = time;
         this.stepped = 0;
         this.currentWorldTime = time;
+        this.anchorInRealTime = false;
     }
 
     public void setCurrentWorldTime(long time) {

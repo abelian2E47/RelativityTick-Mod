@@ -77,6 +77,8 @@ public class RelativityTick implements ModInitializer {
 
         ServerChunkEvents.CHUNK_LOAD.register((world, chunk) ->
                 RegionsManager.onChunkLoad(world, chunk.getPos().toLong()));
+        ServerChunkEvents.CHUNK_UNLOAD.register((world, chunk) ->
+                RegionsManager.onChunkUnload(world, chunk.getPos().toLong()));
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
                 RegionsManager.syncAllRegions(handler.player));
 
