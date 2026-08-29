@@ -68,6 +68,7 @@ public class    RegionTickManager {
     private boolean disableEntityTick = false;
     private boolean disableObserverTick = false;
     private RegionState state = RegionState.RELEASED;
+    private boolean scheduledTicksDirty = true;
 
     private static final int TPS_AVERAGE_WINDOW_GT = 100;
     private final int[] recentStepCounts = new int[TPS_AVERAGE_WINDOW_GT];
@@ -98,6 +99,7 @@ public class    RegionTickManager {
         if (isControlled()) {
             chunk.retakeOverChunk(world.getBlockTickScheduler(), this, world.getTime());
             chunk.retakeOverChunk(world.getFluidTickScheduler(), this, world.getTime());
+            markScheduledTicksDirty();
         }
         region.add(chunk);
         return true;
@@ -121,6 +123,7 @@ public class    RegionTickManager {
                 target.releaseChunk(world.getFluidTickScheduler(), this, currentWorldTime, startTime, stepped);
             }
             region.remove(target);
+            markScheduledTicksDirty();
         }
 
         return true;
@@ -143,6 +146,7 @@ public class    RegionTickManager {
             if (chunk.getChunkPosLong() != chunkPos) continue;
             chunk.takeOverChunk(world.getBlockTickScheduler(), this);
             chunk.takeOverChunk(world.getFluidTickScheduler(), this);
+            markScheduledTicksDirty();
             return;
         }
     }
@@ -200,9 +204,14 @@ public class    RegionTickManager {
                         }
                     }
                     : blockTicker;
-            List<ScheduledTickRecord> blockRecords = tickScheduledTicks(blockScheduler, filterBlockTicker, virtualTime);
-            List<ScheduledTickRecord> fluidRecords = tickScheduledTicks(fluidScheduler, fluidTicker, virtualTime);
-            sendScheduledTicks(blockRecords, fluidRecords);
+            int blockExecuted = tickScheduledTicks(blockScheduler, filterBlockTicker, virtualTime);
+            int fluidExecuted = tickScheduledTicks(fluidScheduler, fluidTicker, virtualTime);
+            //仅在队列变化（本步有 tick 执行，或执行期间有新调度）时收集并发送快照；
+            //客户端按计划刻 trigger 与本地虚拟时间差值递减渲染剩余数
+            if (blockExecuted > 0 || fluidExecuted > 0 || scheduledTicksDirty) {
+                sendScheduledTickSnapshot(world);
+                scheduledTicksDirty = false;
+            }
             tickChunkWorld(world);
             RegionBlockEventProcessor.process(world, this);
             this.tickEntities(world);
@@ -284,13 +293,11 @@ public class    RegionTickManager {
     }
 
 
-    private <T> List<ScheduledTickRecord> tickScheduledTicks(WorldTickScheduler<T> worldScheduler, BiConsumer<BlockPos, T> ticker, long virtualTrigger) {
+    private <T> int tickScheduledTicks(WorldTickScheduler<T> worldScheduler, BiConsumer<BlockPos, T> ticker, long virtualTrigger) {
         WorldTickSchedulerAccessor<T> worldAccess = (WorldTickSchedulerAccessor<T>) worldScheduler;
         Queue<ChunkTickScheduler<T>> tickableSchedulers = new PriorityQueue<>(
                 (first, second) -> OrderedTick.TRIGGER_TICK_COMPARATOR
                         .compare(first.peekNextTick(), second.peekNextTick()));
-
-        List<ScheduledTickRecord> scheduledTicks = collectScheduledTicks(worldScheduler);
 
         for (ChunkTickManager chunk : region) {
             ChunkTickScheduler<T> scheduler = worldAccess.getChunkTickSchedulers().get(chunk.getChunkPosLong());
@@ -334,7 +341,7 @@ public class    RegionTickManager {
             }
         }
 
-        return scheduledTicks;
+        return executedTicks;
     }
 
     private <T> List<ScheduledTickRecord> collectScheduledTicks(WorldTickScheduler<T> worldScheduler) {
@@ -355,21 +362,24 @@ public class    RegionTickManager {
         return scheduledTicks;
     }
 
-    //区域被 take over 后立即发送计划刻快照，供客户端渲染
+    public void markScheduledTicksDirty() {
+        this.scheduledTicksDirty = true;
+    }
+
+    //区域计划刻快照发包（take over 后即时发送，以及步进中队列变化时发送；空队列也发送，客户端据此清空残留渲染）
     public void sendScheduledTickSnapshot(ServerWorld world) {
         if (!isControlled()) return;
         sendScheduledTicks(collectScheduledTicks(world.getBlockTickScheduler()), collectScheduledTicks(world.getFluidTickScheduler()));
     }
 
-    private static void sendScheduledTicks(List<ScheduledTickRecord> blockRecords, List<ScheduledTickRecord> fluidRecords) {
+    private void sendScheduledTicks(List<ScheduledTickRecord> blockRecords, List<ScheduledTickRecord> fluidRecords) {
         if (!RelativityTickConfig.isScheduledTickSendEnabled()) return;
-        if (blockRecords.isEmpty() && fluidRecords.isEmpty()) return;
 
         List<ScheduledTickRecord> allRecords = new ArrayList<>(blockRecords.size() + fluidRecords.size());
         allRecords.addAll(blockRecords);
         allRecords.addAll(fluidRecords);
 
-        ScheduledTickDataPayload payload = new ScheduledTickDataPayload(allRecords);
+        ScheduledTickDataPayload payload = new ScheduledTickDataPayload(id, allRecords);
         for (ServerPlayerEntity player : RelativityTickUtils.getServer().getPlayerManager().getPlayerList()) {
             ServerPlayNetworking.send(player, payload);
         }
