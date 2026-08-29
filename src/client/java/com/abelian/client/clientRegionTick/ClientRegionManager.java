@@ -25,6 +25,7 @@ public class ClientRegionManager {
                 removeChunkIndex(payload.id());
                 REGIONS.remove(payload.id());
                 ClientRegionTicker.clearRegion(payload.id());
+                ClientScheduledTickManager.clearRegion(payload.id());
                 return;
             }
 

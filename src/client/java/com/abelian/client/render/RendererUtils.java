@@ -56,20 +56,6 @@ public class RendererUtils {
         matrices.scale(scale, -scale, scale);
         Matrix4f matrix4f = matrices.peek().getPositionMatrix();
 
-        float y1 = y;
-        for (Text infoText : infoTexts) {
-            float x = -textRenderer.getWidth(infoText) / 2f;
-            textRenderer.draw(
-                    infoText, x, y1, -2130706433, false,
-                    matrix4f, vertexConsumer,
-                    TextRenderer.TextLayerType.SEE_THROUGH,
-                    0x4CC8C8C8,
-                    0xF000F0
-            );
-            y1 += 10;
-        }
-
-
         float y2 = y;
         for (Text infoText : infoTexts) {
             float x = -textRenderer.getWidth(infoText) / 2f;

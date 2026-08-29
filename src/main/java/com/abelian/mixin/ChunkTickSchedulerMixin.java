@@ -45,6 +45,7 @@ public abstract class ChunkTickSchedulerMixin<T> {
         } finally {
             RELATIVITYTICK_RESCHEDULING.set(false);
         }
+        region.markScheduledTicksDirty();
         //跳过原始未修正 tick。
         ci.cancel();
     }
