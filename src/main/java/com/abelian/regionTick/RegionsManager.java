@@ -191,6 +191,15 @@ public class RegionsManager {
         }
     }
 
+    public static void onChunkUnload(ServerWorld world, long chunkPos) {
+        if (shuttingDown) return;
+        RegionTickManager region = getRegionByChunk(world, chunkPos);
+        if (region == null || !region.isControlled()) return;
+        //存档前把受控区块的计划刻锚点换算回真实时间线(虚拟相对延迟落盘),
+        //否则重载后计划刻整体滞后;已释放区域的锚点已在真实时间线,无需处理
+        region.detachChunk(chunkPos, world);
+    }
+
     public static void syncAllRegions(ServerPlayerEntity player) {
         for (Map.Entry<String, RegionTickManager> entry : ID_TO_REGION.entrySet()) {
             ServerPlayNetworking.send(player, createSyncPayload(entry.getKey(), entry.getValue()));
