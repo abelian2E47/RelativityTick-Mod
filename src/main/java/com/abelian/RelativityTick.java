@@ -126,9 +126,13 @@ public class RelativityTick implements ModInitializer {
                                 region.getState(), region.getRate(), region.getVirtualTime(),
                                 region.isDisableHopperTick(), region.isDisableEntityTick(), region.isDisableObserverTick());
                         RegionEntitySyncPayload entityPayload = new RegionEntitySyncPayload(id, new ArrayList<>(entityStates.values()));
+                        //步进完成:广播 0 让客户端清零本地 pending,停止继续推虚拟时间(否则客户端慢于服务端时会把
+                        //剩余时间显示推成负数/提前消失)。与既有 sync+entity 同批发,仅多一个极小包。
+                        RegionStepPayload clearPendingPayload = new RegionStepPayload(id, 0);
                         for (ServerPlayerEntity player : world.getPlayers()) {
                             ServerPlayNetworking.send(player, syncPayload);
                             ServerPlayNetworking.send(player, entityPayload);
+                            ServerPlayNetworking.send(player, clearPendingPayload);
                         }
                     }
                 }
@@ -270,7 +274,7 @@ public class RelativityTick implements ModInitializer {
             }
         }
 
-        region.setAccumulator(accumulator[0]);
+        region.setAccumulator(accumulator[0] + Math.max(0, stepsToTake - stepsTaken));
         return new RegionRunResult(stepsTaken, remainingSteps, regionTickDurationNano);
     }
 
