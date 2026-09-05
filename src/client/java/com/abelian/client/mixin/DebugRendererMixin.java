@@ -89,7 +89,7 @@ public abstract class DebugRendererMixin {
             Map<Vec3d, List<MutableText>> textsByPos = new LinkedHashMap<>();
             for (ScheduledTickDisplay display : displays) {
                 List<MutableText> lines = List.of(
-                        Text.translatable("relativitytick.scheduled_tick.remaining", display.remainingTick()).formatted(Formatting.RED),
+                        Text.translatable("relativitytick.scheduled_tick.remaining", display.remainingTick()).formatted(Formatting.BLUE),
                         Text.translatable("relativitytick.scheduled_tick.sub_order", display.subOrderRank()).formatted(Formatting.GREEN),
                         Text.translatable("relativitytick.scheduled_tick.priority", display.priority()).formatted(Formatting.YELLOW));
                 textsByPos.computeIfAbsent(display.pos(), p -> new ArrayList<>()).addAll(lines);

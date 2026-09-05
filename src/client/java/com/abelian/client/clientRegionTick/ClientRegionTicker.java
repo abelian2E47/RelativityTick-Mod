@@ -47,13 +47,17 @@ public class ClientRegionTicker {
             if (region == null) return;
 
             region.setPendingSteps(payload.steps());
+            if (payload.steps() <= 0) {
+                ENTITY_INTERPOLATIONS.entrySet().removeIf(entry -> entry.getValue().regionId().equals(payload.regionID()));
+                region.resetInterpolation();
+            }
         }));
 
         ClientPlayNetworking.registerGlobalReceiver(RegionEntitySyncPayload.ID, (payload, context) -> context.client().execute(() -> {
             ClientWorld world = context.client().world;
             if (world == null) return;
 
-            applyEntityStates(world, payload.entities());
+            applyEntityStates(world, payload.regionId(), payload.entities());
         }));
 
         ClientPlayNetworking.registerGlobalReceiver(RegionTimePayload.ID, (payload, context) -> context.client().execute(() -> {
@@ -99,13 +103,29 @@ public class ClientRegionTicker {
         });
     }
 
-    private static void applyEntityStates(ClientWorld world, List<EntityStateRecord> states) {
+    private static void applyEntityStates(ClientWorld world, String regionId, List<EntityStateRecord> states) {
+        if (states.isEmpty()) return;
+
+        ClientRegion region = ClientRegionManager.getRegion(regionId);
+        boolean smoothAlign = region != null && (region.isRunning() || region.isStepping());
+
+        int applied = 0;
         for (EntityStateRecord state : states) {
             Entity entity = world.getEntityById(state.entityId());
             if (entity == null || entity.isRemoved() || entity instanceof PlayerEntity) continue;
 
+            Vec3d previous = smoothAlign ? entity.getPos() : null;
             entity.refreshPositionAndAngles(state.x(), state.y(), state.z(), state.yaw(), state.pitch());
             entity.setVelocity(new Vec3d(state.velocityX(), state.velocityY(), state.velocityZ()));
+            if (previous != null) {
+                ENTITY_INTERPOLATIONS.put(entity.getId(),
+                        new EntityInterpolationManager.EntityRenderInterpolation(regionId, previous, entity.getPos()));
+            }
+            applied++;
+        }
+
+        if (smoothAlign && applied > 0) {
+            region.recordStep();
         }
     }
 
