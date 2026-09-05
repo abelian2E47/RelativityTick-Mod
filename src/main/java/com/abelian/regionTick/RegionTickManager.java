@@ -144,32 +144,26 @@ public class    RegionTickManager {
         for (ChunkTickManager chunk : region) {
             chunk.releaseChunk(worldScheduler, this, currentWorldTime, startTime, stepped);
         }
-        //全部区块已换算回真实时间线,后续 releaseChunkToWorld 不再平移(修复 S3 二次平移)
         this.anchorInRealTime = true;
     }
 
     public void takeOverChunk(long chunkPos, ServerWorld world) {
         for (ChunkTickManager chunk : region) {
             if (chunk.getChunkPosLong() != chunkPos) continue;
-            //区块重载后 restore:disable(真实时间) 物化的锚点由 ChunkTickSchedulerMixin 在 disable 尾
-            //换算回虚拟时间;这里传入偏移仅覆盖"队列已物化"的路径(如 add 时),空队列时平移为空操作
-            long reanchorOffset = getVirtualTime() - world.getTime();
-            chunk.retakeOverChunk(world.getBlockTickScheduler(), this, reanchorOffset);
-            chunk.retakeOverChunk(world.getFluidTickScheduler(), this, reanchorOffset);
+            long offset = getVirtualTime() - world.getTime();
+            chunk.retakeOverChunk(world.getBlockTickScheduler(), this, offset);
+            chunk.retakeOverChunk(world.getFluidTickScheduler(), this, offset);
             markScheduledTicksDirty();
             return;
         }
     }
 
-    //区块卸载时把计划刻锚点换算回真实时间线(releaseChunk 同语义),保证落盘 delay 是虚拟相对延迟;
-    //区块仍属于区域,重载时由 retakeOverChunk 换算回虚拟时间
+    //区块卸载时将计划刻换算回真实时间线
     public void detachChunk(long chunkPos, ServerWorld world) {
         for (ChunkTickManager chunk : region) {
             if (chunk.getChunkPosLong() != chunkPos) continue;
             chunk.releaseChunk(world.getBlockTickScheduler(), this, world.getTime(), startTime, stepped);
             chunk.releaseChunk(world.getFluidTickScheduler(), this, world.getTime(), startTime, stepped);
-            //换算改变了计划刻队列,必须标记区块待存:否则 autosave 后无方块变更的区块卸载时
-            //tryMarkSaved 会跳过序列化,磁盘上残留旧 autosave 的虚拟锚点 delay
             WorldChunk worldChunk = world.getChunkManager().getWorldChunk(ChunkPos.getPackedX(chunkPos), ChunkPos.getPackedZ(chunkPos));
             if (worldChunk != null) {
                 worldChunk.markNeedsSaving();
@@ -179,10 +173,7 @@ public class    RegionTickManager {
     }
 
     public void releaseChunkToWorld(long chunkPos, ServerWorld world) {
-        //已释放(锚点已在真实时间线)或从未接管过(startTime==0)的区块无需换算;
-        //守卫不能只看 startTime:release 命令不重置 startTime,已释放区域重载时二次平移会额外推迟计划刻
         if (anchorInRealTime || (getStartTime() == 0 && getStepped() == 0)) return;
-        //本次平移后锚点即回到真实时间线,后续任何区块重载都不再平移
         this.anchorInRealTime = true;
         for (ChunkTickManager chunk : region) {
             if (chunk.getChunkPosLong() != chunkPos) continue;
@@ -238,8 +229,6 @@ public class    RegionTickManager {
                     : blockTicker;
             int blockExecuted = tickScheduledTicks(blockScheduler, filterBlockTicker, virtualTime);
             int fluidExecuted = tickScheduledTicks(fluidScheduler, fluidTicker, virtualTime);
-            //仅在队列变化（本步有 tick 执行，或执行期间有新调度）时收集并发送快照；
-            //客户端按计划刻 trigger 与本地虚拟时间差值递减渲染剩余数
             if (blockExecuted > 0 || fluidExecuted > 0 || scheduledTicksDirty) {
                 sendScheduledTickSnapshot(world);
                 scheduledTicksDirty = false;
@@ -383,7 +372,7 @@ public class    RegionTickManager {
             ChunkTickScheduler<T> scheduler = worldAccess.getChunkTickSchedulers().get(chunk.getChunkPosLong());
             if (scheduler == null || scheduler.peekNextTick() == null) continue;
 
-            //收集全部计划刻，发包
+            //收集计划刻
             Iterator<OrderedTick<T>> tickIterator = scheduler.getQueueAsStream().iterator();
             while (tickIterator.hasNext() && scheduledTicks.size() < MAX_SCHEDULED_TICK_RECORDS) {
                 OrderedTick<T> tick = tickIterator.next();
@@ -398,7 +387,7 @@ public class    RegionTickManager {
         this.scheduledTicksDirty = true;
     }
 
-    //区域计划刻快照发包（take over 后即时发送，以及步进中队列变化时发送；空队列也发送，客户端据此清空残留渲染）
+    //区域计划刻快照发包
     public void sendScheduledTickSnapshot(ServerWorld world) {
         if (!isControlled()) return;
         sendScheduledTicks(collectScheduledTicks(world.getBlockTickScheduler()), collectScheduledTicks(world.getFluidTickScheduler()));

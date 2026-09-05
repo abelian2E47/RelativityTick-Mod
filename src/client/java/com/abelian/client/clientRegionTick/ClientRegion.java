@@ -101,6 +101,14 @@ public class ClientRegion {
         this.pendingSteps = Math.max(0, pendingSteps);
     }
 
+    //权威快照（如 dash）后复位插值状态，使渲染立即使用精确的实体位置
+    public void resetInterpolation() {
+        interpolationState.lastPacketTime = 0;
+        interpolationState.lastTickTime = 0;
+        interpolationState.phase = 0.0f;
+        interpolationState.tickDelta = 1.0f;
+    }
+
     public boolean isControlled(){ return regionState != RegionTickManager.RegionState.RELEASED; }
 
     public boolean isRunning(){ return regionState == RegionTickManager.RegionState.RUNNING; }

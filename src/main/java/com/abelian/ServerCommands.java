@@ -337,11 +337,16 @@ public class ServerCommands {
             entityStates.put(state.entityId(), state);
         }
 
+        //dash 为服务端权威即时推进：清除服务端残留的待执行步数，避免与之前 step 的本地动画叠加
+        rcc.manager.setPendingSteps(0);
+
         sendFeedback(rcc.source, rcc.id, "relativitytick.command.region.stepped", steps);
         syncRegionState(rcc);
-        sendStepPayload(rcc, steps);
+        //dash 不携带待执行步数；发送 0 让客户端清空 pending 重放并复位插值，直接对齐服务端快照
+        sendStepPayload(rcc, 0);
         sendEntitySyncPayload(rcc, new ArrayList<>(entityStates.values()));
-        ServerPlayNetworking.send(rcc.source.getPlayer(), new RegionTimePayload(rcc.id, rcc.manager.getVirtualTime()));
+        //同步虚拟时间给区域内全部玩家（syncRegionState 已含 virtualTime，此处保持显式广播与其他路径一致）
+        sendToWorldPlayers(rcc.world, new RegionTimePayload(rcc.id, rcc.manager.getVirtualTime()));
         return 1;
     }
 

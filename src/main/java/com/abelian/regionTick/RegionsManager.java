@@ -186,7 +186,6 @@ public class RegionsManager {
         if (region.isControlled()) {
             region.takeOverChunk(chunkPos, world);
         } else {
-            //区域已释放但区块带着虚拟时间线锚点落盘,还给 vanilla 前换算回真实时间线
             region.releaseChunkToWorld(chunkPos, world);
         }
     }
@@ -195,8 +194,6 @@ public class RegionsManager {
         if (shuttingDown) return;
         RegionTickManager region = getRegionByChunk(world, chunkPos);
         if (region == null || !region.isControlled()) return;
-        //存档前把受控区块的计划刻锚点换算回真实时间线(虚拟相对延迟落盘),
-        //否则重载后计划刻整体滞后;已释放区域的锚点已在真实时间线,无需处理
         region.detachChunk(chunkPos, world);
     }
 

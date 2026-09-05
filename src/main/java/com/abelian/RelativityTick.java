@@ -45,6 +45,9 @@ public class RelativityTick implements ModInitializer {
     private static final Map<String, Double> LAST_SENT_REGION_TPS = new HashMap<>();
     private static final Map<String, Integer> REGION_TPS_SEND_CANDIDATE_TICKS = new HashMap<>();
 
+    private static final int REGION_ENTITY_SYNC_INTERVAL_REGION_TICKS = 20;
+    private static final Map<String, Integer> REGION_ENTITY_SYNC_LAST_STEPPED = new HashMap<>();
+
 	@Override
 	public void onInitialize() {
 		RelativityTickConfig.initialize();
@@ -72,6 +75,7 @@ public class RelativityTick implements ModInitializer {
             RelativityTickUtils.clear();
             LAST_SENT_REGION_TPS.clear();
             REGION_TPS_SEND_CANDIDATE_TICKS.clear();
+            REGION_ENTITY_SYNC_LAST_STEPPED.clear();
             RegionBlockEventProcessor.clear();
         });
 
@@ -165,6 +169,31 @@ public class RelativityTick implements ModInitializer {
                 sendRegionTpsAndEntities(id, region, world, currentTPS);
                 LAST_SENT_REGION_TPS.put(id, currentTPS);
                 REGION_TPS_SEND_CANDIDATE_TICKS.remove(id);
+            }
+        });
+
+        //实体权威矫正
+        ServerTickEvents.END_SERVER_TICK.register(server -> {
+            for (String id : RegionsManager.getRegionIdsInOrder()) {
+                RegionTickManager region = RegionsManager.getRegion(id);
+                if (!region.isControlled()) continue;
+                if (!region.isRunning() && region.getPendingSteps() <= 0) continue;
+
+                ServerWorld world = server.getWorld(region.getDimension());
+                if (world == null) continue;
+
+                int stepped = region.getStepped();
+                int lastSent = REGION_ENTITY_SYNC_LAST_STEPPED.getOrDefault(id, stepped);
+                if (stepped - lastSent < REGION_ENTITY_SYNC_INTERVAL_REGION_TICKS) continue;
+                REGION_ENTITY_SYNC_LAST_STEPPED.put(id, stepped);
+
+                ArrayList<EntityStateRecord> entityStates = new ArrayList<>(region.collectEntityStates(world));
+                if (entityStates.isEmpty()) continue;
+
+                RegionEntitySyncPayload entityPayload = new RegionEntitySyncPayload(id, entityStates);
+                for (ServerPlayerEntity player : world.getPlayers()) {
+                    ServerPlayNetworking.send(player, entityPayload);
+                }
             }
         });
 	}
