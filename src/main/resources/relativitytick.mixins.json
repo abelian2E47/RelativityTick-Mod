@@ -17,6 +17,7 @@
     "ServerWorldMixin",
     "SpawnHelperMixin",
     "TickMangerMixin",
+    "WorldChunkAccessor",
     "WorldChunkDirectBlockEntityTickInvokerMixin",
     "WorldMixin",
     "WorldTickSchedulerAccessor",
