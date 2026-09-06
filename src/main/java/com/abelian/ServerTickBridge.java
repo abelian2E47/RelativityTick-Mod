@@ -3,6 +3,7 @@ package com.abelian;
 import com.abelian.mixin.ServerChunkManagerAccessor;
 import com.abelian.mixin.ServerWorldAccessor;
 import com.abelian.mixin.WorldAccessor;
+import com.abelian.mixin.WorldChunkAccessor;
 import com.abelian.regionTick.RegionTickManager;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.block.entity.BlockEntity;
@@ -17,7 +18,6 @@ import net.minecraft.world.World;
 import net.minecraft.world.chunk.BlockEntityTickInvoker;
 import net.minecraft.world.chunk.WorldChunk;
 
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -68,70 +68,35 @@ public class ServerTickBridge {
         }
     }
 
-    // ===== Lithium "block entity sleeping" compatibility =====
-    // Lithium (mixin.world.block_entity_ticking.sleeping) swaps the ticker of idle block entities (hoppers,
-    // furnaces, brewing stands, ...) to a no-op "sleeping" ticker that reports a null position, and only wakes
-    // them via events (container content changes, entity/item movement, comparator/block updates).
-    // RelativityTick advances controlled regions by ticking, which never produces those events by itself: a
-    // block entity that falls asleep inside a controlled region would never be ticked again (e.g. hoppers stop
-    // transferring items). Wake all sleeping block entities of the region's chunks before every region tick so
-    // they get re-indexed and ticked exactly like vanilla. Sleeping stays active outside controlled regions.
-    // No compile/runtime dependency on lithium: the interface is looked up reflectively and only used when the
-    // mod is actually loaded.
-    private static boolean lithiumSleepingChecked = false;
-    private static boolean lithiumSleepingPresent = false;
-    private static Class<?> lithiumSleepingBlockEntityClass;
-    private static Method lithiumSleepingBlockEntityIsSleeping;
-    private static Method lithiumSleepingBlockEntityWakeUp;
+    //lithium兼容: 每步先按原版rebind方式重建ticker(WorldChunk.updateTicker),
+    //锂自己的LevelChunkMixin在rebind处会清除其休眠状态,从而唤醒休眠方块实体,
+    //避免它们(如漏斗)在受控区域内入睡后不再被步进驱动。无需反射或引用锂的类。
+    private static boolean lithiumLoaded = false;
+    private static boolean lithiumLoadedChecked = false;
 
-    public static void wakeSleepingBlockEntities(ServerWorld world, Set<Long> chunkPositions) {
-        if (!lithiumSleepingAvailable() || chunkPositions.isEmpty()) {
+    public static void rebindBlockEntityTickers(ServerWorld world, Set<Long> chunkPositions) {
+        if (!isLithiumLoaded() || chunkPositions.isEmpty()) {
             return;
         }
 
-        Class<?> sleepingClass = lithiumSleepingBlockEntityClass;
-        Method isSleeping = lithiumSleepingBlockEntityIsSleeping;
-        Method wakeUp = lithiumSleepingBlockEntityWakeUp;
         for (long chunkPosLong : chunkPositions) {
             ChunkPos chunkPos = new ChunkPos(chunkPosLong);
             WorldChunk chunk = world.getChunkManager().getWorldChunk(chunkPos.x, chunkPos.z);
             if (chunk == null) continue;
 
             for (BlockEntity blockEntity : chunk.getBlockEntities().values()) {
-                if (blockEntity.isRemoved() || !sleepingClass.isInstance(blockEntity)) continue;
-                try {
-                    if ((Boolean) isSleeping.invoke(blockEntity)) {
-                        wakeUp.invoke(blockEntity);
-                    }
-                } catch (ReflectiveOperationException e) {
-                    //接口异常时静默放弃唤醒,回退为未装锂时的行为
-                    lithiumSleepingPresent = false;
-                    return;
-                }
+                if (blockEntity.isRemoved()) continue;
+                ((WorldChunkAccessor) chunk).relativityTick$updateTicker(blockEntity);
             }
         }
     }
 
-    private static boolean lithiumSleepingAvailable() {
-        if (lithiumSleepingChecked) {
-            return lithiumSleepingPresent;
+    private static boolean isLithiumLoaded() {
+        if (!lithiumLoadedChecked) {
+            lithiumLoadedChecked = true;
+            lithiumLoaded = FabricLoader.getInstance().isModLoaded("lithium");
         }
-        lithiumSleepingChecked = true;
-        try {
-            if (!FabricLoader.getInstance().isModLoaded("lithium")) {
-                return false;
-            }
-            Class<?> sleepingClass = Class.forName(
-                    "net.caffeinemc.mods.lithium.common.block.entity.SleepingBlockEntity", false,
-                    ServerTickBridge.class.getClassLoader());
-            lithiumSleepingBlockEntityIsSleeping = sleepingClass.getMethod("isSleeping");
-            lithiumSleepingBlockEntityWakeUp = sleepingClass.getMethod("wakeUpNow");
-            lithiumSleepingBlockEntityClass = sleepingClass;
-            lithiumSleepingPresent = true;
-        } catch (Throwable ignored) {
-            //未装锂或版本接口不一致时保持原行为
-        }
-        return lithiumSleepingPresent;
+        return lithiumLoaded;
     }
 
     public static List<Entity> getOrderedEntitySnapshot(ServerWorld world) {
@@ -214,7 +179,6 @@ public class ServerTickBridge {
                 BlockPos pos = invoker.getPos();
                 IndexedBlockEntityTicker indexedTicker = new IndexedBlockEntityTicker(invoker, order++);
                 if (pos == null) {
-                    // Lithium keeps sleeping tickers in the world's list. They become indexable again when woken.
                     unindexedTickers.add(indexedTicker);
                     continue;
                 }
