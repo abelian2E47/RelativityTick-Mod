@@ -243,6 +243,8 @@ public class    RegionTickManager {
     }
 
     private void tickBlockEntities(ServerWorld world) {
+        //唤醒锂休眠的方块实体,否则它们(如漏斗)在受控区域内入睡后不再被步进驱动
+        ServerTickBridge.wakeSleepingBlockEntities(world, chunkPositions);
         boolean shouldTick = world.getTickManager().shouldTick();
         ServerTickBridge.forEachBlockEntityTicker(world, chunkPositions, invoker -> {
             if (!shouldTick || invoker.isRemoved()) return;
