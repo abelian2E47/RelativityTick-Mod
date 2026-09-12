@@ -19,6 +19,7 @@ public final class RelativityTickClientConfig {
     public static final boolean DEFAULT_RENDER_SCHEDULED_TICKS = true;
     public static final double DEFAULT_SCHEDULED_TICK_TEXT_SCALE = 0.03;
     public static final double DEFAULT_REGION_LINE_WIDTH = 2.5;
+    public static final boolean DEFAULT_ENTITY_RENDER_INTERPOLATION = true;
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final Path CONFIG_PATH = FabricLoader.getInstance().getConfigDir().resolve("relativitytick-client.json");
@@ -26,6 +27,7 @@ public final class RelativityTickClientConfig {
     private static boolean renderScheduledTicks = DEFAULT_RENDER_SCHEDULED_TICKS;
     private static double scheduledTickTextScale = DEFAULT_SCHEDULED_TICK_TEXT_SCALE;
     private static double regionLineWidth = DEFAULT_REGION_LINE_WIDTH;
+    private static boolean entityRenderInterpolation = DEFAULT_ENTITY_RENDER_INTERPOLATION;
 
     private RelativityTickClientConfig() {
     }
@@ -47,6 +49,7 @@ public final class RelativityTickClientConfig {
             renderScheduledTicks = readBoolean(root, "renderScheduledTicks", DEFAULT_RENDER_SCHEDULED_TICKS);
             scheduledTickTextScale = readNumber(root, "scheduledTickTextScale", DEFAULT_SCHEDULED_TICK_TEXT_SCALE);
             regionLineWidth = readNumber(root, "regionLineWidth", DEFAULT_REGION_LINE_WIDTH);
+            entityRenderInterpolation = readBoolean(root, "entityRenderInterpolation", DEFAULT_ENTITY_RENDER_INTERPOLATION);
             writeConfig();
         } catch (IOException | RuntimeException e) {
             setDefaults();
@@ -81,10 +84,20 @@ public final class RelativityTickClientConfig {
         writeConfig();
     }
 
+    public static boolean isEntityRenderInterpolationEnabled() {
+        return entityRenderInterpolation;
+    }
+
+    public static void setEntityRenderInterpolationEnabled(boolean value) throws IOException {
+        entityRenderInterpolation = value;
+        writeConfig();
+    }
+
     private static void setDefaults() {
         renderScheduledTicks = DEFAULT_RENDER_SCHEDULED_TICKS;
         scheduledTickTextScale = DEFAULT_SCHEDULED_TICK_TEXT_SCALE;
         regionLineWidth = DEFAULT_REGION_LINE_WIDTH;
+        entityRenderInterpolation = DEFAULT_ENTITY_RENDER_INTERPOLATION;
     }
 
     private static double readNumber(JsonObject object, String key, double defaultValue) {
@@ -119,6 +132,7 @@ public final class RelativityTickClientConfig {
             root.addProperty("renderScheduledTicks", renderScheduledTicks);
             root.addProperty("scheduledTickTextScale", scheduledTickTextScale);
             root.addProperty("regionLineWidth", regionLineWidth);
+            root.addProperty("entityRenderInterpolation", entityRenderInterpolation);
             GSON.toJson(root, writer);
         }
     }

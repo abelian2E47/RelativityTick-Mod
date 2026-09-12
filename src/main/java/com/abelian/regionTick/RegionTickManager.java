@@ -69,8 +69,6 @@ public class    RegionTickManager {
     private boolean disableObserverTick = false;
     private RegionState state = RegionState.RELEASED;
     private boolean scheduledTicksDirty = true;
-    //区域全部计划刻锚点是否已在真实时间线(已 releaseRegion 或从未接管)。
-    //用于 releaseChunkToWorld 守卫:release 命令不重置 startTime,不能靠 startTime==0 判断
     private boolean anchorInRealTime = false;
 
     private static final int TPS_AVERAGE_WINDOW_GT = 100;
@@ -100,7 +98,7 @@ public class    RegionTickManager {
 
         ChunkTickManager chunk = new ChunkTickManager(chunkPos);
         if (isControlled()) {
-            //区块当前按真实时间线运行,接管进区域需换算到虚拟时间线(当前虚拟时间-当前真实时间)
+            //接管进区域需换算到虚拟时间线
             long reanchorOffset = getVirtualTime() - world.getTime();
             chunk.retakeOverChunk(world.getBlockTickScheduler(), this, reanchorOffset);
             chunk.retakeOverChunk(world.getFluidTickScheduler(), this, reanchorOffset);
@@ -221,39 +219,38 @@ public class    RegionTickManager {
         RegionTimeContext.begin(world, virtualTime);
         ServerWorldAccessor worldAccessor = (ServerWorldAccessor) world;
         try {
-            // [修改点1] 区域步进发生在 ServerWorld.tick() 之外（END_SERVER_TICK），
-            // 所以 ServerWorld.inBlockTick 在 step 内一直是 false。原版该标志在 ServerWorld.tick 开头
-            // 置 true、在 processSyncedBlockEvents 之后置 false，覆盖 blockTicks/fluidTicks/chunkSource/
-            // blockEvents 四个相位（不覆盖 entities/tickBlockEntities）。PistonBlock.tryMove 用它判断
-            // “快速回缩”，恒为 false 会让活塞把方块事件类型判成 1（粘性拉回 move(...,false)）而不是原版的
-            // 2（只删掉头部、不拉回），从而改变被推方块/侦测器的最终位置，以及随之派生的邻居形状更新与计划刻。
-            // 这里按与原版相同的相位窗口设置该标志。
             boolean previousInBlockTick = world.isInBlockTick();
             worldAccessor.setInBlockTick(true);
             try {
-                BiConsumer<BlockPos, Block> filterBlockTicker = disableObserverTick
-                        ? (pos, block) -> {
-                            if (block != Blocks.OBSERVER) {
-                                blockTicker.accept(pos, block);
-                            }
-                        }
-                        : blockTicker;
-                int blockExecuted = tickScheduledTicks(blockScheduler, filterBlockTicker, virtualTime);
-                int fluidExecuted = tickScheduledTicks(fluidScheduler, fluidTicker, virtualTime);
-                if (blockExecuted > 0 || fluidExecuted > 0 || scheduledTicksDirty) {
-                    sendScheduledTickSnapshot(world);
-                    scheduledTicksDirty = false;
-                }
+                tickRegionScheduledTicks(world, blockScheduler, blockTicker, fluidScheduler, fluidTicker, virtualTime);
                 tickChunkWorld(world);
                 RegionBlockEventProcessor.process(world, this);
             } finally {
-                // 对应原版 L403：方块事件处理完即清，后面的实体/方块实体相位读到的仍是上一个值
                 worldAccessor.setInBlockTick(previousInBlockTick);
             }
-            this.tickBlockEntities(world);
             this.tickEntities(world);
+            this.tickBlockEntities(world);
         } finally {
             RegionTimeContext.end();
+        }
+    }
+
+    //执行本步到期的计划刻
+    private void tickRegionScheduledTicks(ServerWorld world, WorldTickScheduler<Block> blockScheduler, BiConsumer<BlockPos, Block> blockTicker,
+                                          WorldTickScheduler<Fluid> fluidScheduler, BiConsumer<BlockPos, Fluid> fluidTicker, long virtualTime) {
+        BiConsumer<BlockPos, Block> filterBlockTicker = disableObserverTick
+                ? (pos, block) -> {
+                    if (block != Blocks.OBSERVER) {
+                        blockTicker.accept(pos, block);
+                    }
+                }
+                : blockTicker;
+        int blockExecuted = tickScheduledTicks(blockScheduler, filterBlockTicker, virtualTime);
+        int fluidExecuted = tickScheduledTicks(fluidScheduler, fluidTicker, virtualTime);
+        //若计划刻队列有变动，向客户端发送渲染快照
+        if (blockExecuted > 0 || fluidExecuted > 0 || scheduledTicksDirty) {
+            sendScheduledTickSnapshot(world);
+            scheduledTicksDirty = false;
         }
     }
 
