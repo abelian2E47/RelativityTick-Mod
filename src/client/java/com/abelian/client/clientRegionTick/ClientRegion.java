@@ -27,6 +27,8 @@ public class ClientRegion {
     private float renderPeriodMs;
     private long virtualTime;
     private int pendingSteps;
+    private int announcedSteps;
+    private int replayedSteps;
     private boolean disableHopperTick;
     private boolean disableEntityTick;
 
@@ -47,10 +49,13 @@ public class ClientRegion {
         this.disableEntityTick = payload.disableEntityTick();
         replaceChunks(payload.chunkPositions());
         if (!isRunning()) {
-            this.accumulator = 0.0;
+            this.accumulator = this.accumulator >= 1.0 ? 1.0 : 0.0;
             this.lastAccumulateNanos = System.nanoTime();
         } else if (!wasRunning) {
             this.lastAccumulateNanos = System.nanoTime();
+        }
+        if (isRunning() || regionState == RegionTickManager.RegionState.RELEASED) {
+            resetReplayBudget();
         }
     }
 
@@ -157,21 +162,42 @@ public class ClientRegion {
         return (float) (1000.0 * ticksPerBatch / effectiveRate);
     }
 
-    public int consumePendingSteps(int maxSteps) {
-        int steps = Math.min(pendingSteps, maxSteps);
-        pendingSteps -= steps;
-        return steps;
+    //步进通告：累计本 episode 服务端请求的步数，并让首步立刻到期
+    public void announceSteps(int serverPending) {
+        if (serverPending > 0) {
+            int added = serverPending - this.pendingSteps;
+            if (added > 0) {
+                this.announcedSteps += added;
+                if (!isRunning()) {
+                    this.accumulator = Math.max(this.accumulator, 1.0);
+                    this.lastAccumulateNanos = System.nanoTime();
+                }
+            }
+        }
+        this.pendingSteps = Math.max(0, serverPending);
     }
 
-    public void setPendingSteps(int pendingSteps) {
-        this.pendingSteps = Math.max(0, pendingSteps);
+    //本 episode 已通告但还没本地回放的步数
+    public int pendingReplayCount() {
+        return Math.max(0, this.announcedSteps - this.replayedSteps);
+    }
+
+    //记录已本地回放的步数
+    public void markStepsReplayed(int steps) {
+        this.replayedSteps += Math.max(0, steps);
+    }
+
+    //回到运行/释放状态时清空回放预算
+    public void resetReplayBudget() {
+        this.announcedSteps = 0;
+        this.replayedSteps = 0;
     }
 
     public boolean isControlled(){ return regionState != RegionTickManager.RegionState.RELEASED; }
 
     public boolean isRunning(){ return regionState == RegionTickManager.RegionState.RUNNING; }
 
-    public boolean isStepping(){ return pendingSteps > 0; }
+    public boolean isStepping(){ return pendingSteps > 0 || pendingReplayCount() > 0; }
 
     public boolean isDisableHopperTick(){ return disableHopperTick; }
 

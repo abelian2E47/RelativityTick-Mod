@@ -49,7 +49,7 @@ public class ClientRegionTicker {
             ClientRegion region = ClientRegionManager.getRegion(payload.regionID());
             if (region == null) return;
 
-            region.setPendingSteps(payload.steps());
+            region.announceSteps(payload.steps());
         }));
 
         ClientPlayNetworking.registerGlobalReceiver(RegionEntitySyncPayload.ID, (payload, context) -> context.client().execute(() -> {
@@ -83,12 +83,15 @@ public class ClientRegionTicker {
             for (ClientRegion region : ClientRegionManager.getRegions()) {
                 if (!region.isControlled()) continue;
 
-                if (region.isStepping() && !region.isRunning()) {
-                    int stepsToTake = region.accumulateSteps();
-                    stepsToTake = region.consumePendingSteps(stepsToTake);
-                    if (stepsToTake > 0) {
-                        tickRegion(world, region, region.getChunkPositions(), stepsToTake);
-                        region.beginInterpolationSegment();
+                if (!region.isRunning()) {
+                    int replayBudget = region.pendingReplayCount();
+                    if (replayBudget > 0) {
+                        int stepsToTake = Math.min(region.accumulateSteps(), replayBudget);
+                        if (stepsToTake > 0) {
+                            tickRegion(world, region, region.getChunkPositions(), stepsToTake);
+                            region.markStepsReplayed(stepsToTake);
+                            region.beginInterpolationSegment();
+                        }
                     }
                     continue;
                 }
