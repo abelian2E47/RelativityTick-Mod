@@ -219,22 +219,37 @@ public class    RegionTickManager {
         stepped++;
         long virtualTime = startTime + stepped;
         RegionTimeContext.begin(world, virtualTime);
+        ServerWorldAccessor worldAccessor = (ServerWorldAccessor) world;
         try {
-            BiConsumer<BlockPos, Block> filterBlockTicker = disableObserverTick
-                    ? (pos, block) -> {
-                        if (block != Blocks.OBSERVER) {
-                            blockTicker.accept(pos, block);
+            // [修改点1] 区域步进发生在 ServerWorld.tick() 之外（END_SERVER_TICK），
+            // 所以 ServerWorld.inBlockTick 在 step 内一直是 false。原版该标志在 ServerWorld.tick 开头
+            // 置 true、在 processSyncedBlockEvents 之后置 false，覆盖 blockTicks/fluidTicks/chunkSource/
+            // blockEvents 四个相位（不覆盖 entities/tickBlockEntities）。PistonBlock.tryMove 用它判断
+            // “快速回缩”，恒为 false 会让活塞把方块事件类型判成 1（粘性拉回 move(...,false)）而不是原版的
+            // 2（只删掉头部、不拉回），从而改变被推方块/侦测器的最终位置，以及随之派生的邻居形状更新与计划刻。
+            // 这里按与原版相同的相位窗口设置该标志。
+            boolean previousInBlockTick = world.isInBlockTick();
+            worldAccessor.setInBlockTick(true);
+            try {
+                BiConsumer<BlockPos, Block> filterBlockTicker = disableObserverTick
+                        ? (pos, block) -> {
+                            if (block != Blocks.OBSERVER) {
+                                blockTicker.accept(pos, block);
+                            }
                         }
-                    }
-                    : blockTicker;
-            int blockExecuted = tickScheduledTicks(blockScheduler, filterBlockTicker, virtualTime);
-            int fluidExecuted = tickScheduledTicks(fluidScheduler, fluidTicker, virtualTime);
-            if (blockExecuted > 0 || fluidExecuted > 0 || scheduledTicksDirty) {
-                sendScheduledTickSnapshot(world);
-                scheduledTicksDirty = false;
+                        : blockTicker;
+                int blockExecuted = tickScheduledTicks(blockScheduler, filterBlockTicker, virtualTime);
+                int fluidExecuted = tickScheduledTicks(fluidScheduler, fluidTicker, virtualTime);
+                if (blockExecuted > 0 || fluidExecuted > 0 || scheduledTicksDirty) {
+                    sendScheduledTickSnapshot(world);
+                    scheduledTicksDirty = false;
+                }
+                tickChunkWorld(world);
+                RegionBlockEventProcessor.process(world, this);
+            } finally {
+                // 对应原版 L403：方块事件处理完即清，后面的实体/方块实体相位读到的仍是上一个值
+                worldAccessor.setInBlockTick(previousInBlockTick);
             }
-            tickChunkWorld(world);
-            RegionBlockEventProcessor.process(world, this);
             this.tickBlockEntities(world);
             this.tickEntities(world);
         } finally {
