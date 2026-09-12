@@ -16,10 +16,8 @@ public final class RegionBlockEventProcessor {
     private RegionBlockEventProcessor() {
     }
 
-    private static final java.util.Map<ServerWorld, java.util.Map<RegionTickManager, List<BlockEvent>>> CONTROLLED_EVENTS =
-            new java.util.IdentityHashMap<>();
-    private static final java.util.Map<ServerWorld, List<BlockEvent>> DEFERRED_EVENTS =
-            new java.util.IdentityHashMap<>();
+    private static final java.util.Map<ServerWorld, java.util.Map<RegionTickManager, List<BlockEvent>>> CONTROLLED_EVENTS = new java.util.IdentityHashMap<>();
+    private static final java.util.Map<ServerWorld, List<BlockEvent>> DEFERRED_EVENTS = new java.util.IdentityHashMap<>();
 
     public static void process(ServerWorld world, Predicate<RegionTickManager> shouldProcess) {
         restoreDeferredEvents(world);

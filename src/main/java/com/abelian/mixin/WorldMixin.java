@@ -1,7 +1,7 @@
 package com.abelian.mixin;
 import com.abelian.ServerTickBridge;
 
-import com.abelian.RegionTickContext;
+import com.abelian.RegionTimeContext;
 import net.minecraft.world.World;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
@@ -13,7 +13,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public class WorldMixin {
     @Inject(method = "getTime", at = @At("HEAD"), cancellable = true)
     private void useRegionTickTime(CallbackInfoReturnable<Long> cir) {
-        Long tickTime = RegionTickContext.getTime((World) (Object) this);
+        Long tickTime = RegionTimeContext.getTime((World) (Object) this);
         if (tickTime != null) {
             cir.setReturnValue(tickTime);
         }
