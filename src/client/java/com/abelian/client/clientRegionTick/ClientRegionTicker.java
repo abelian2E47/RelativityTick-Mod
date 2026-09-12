@@ -1,6 +1,6 @@
 package com.abelian.client.clientRegionTick;
 
-import com.abelian.RegionTickContext;
+import com.abelian.RegionTimeContext;
 import com.abelian.client.render.EntityInterpolationManager;
 import com.abelian.client.mixin.ClientEntityManagerAccessor;
 import com.abelian.client.mixin.ClientWorldAccessor;
@@ -149,7 +149,7 @@ public class ClientRegionTicker {
         Map<Integer, Entity> tickedEntities = new HashMap<>();
 
         for (int i = 0; i < stepsTaken; i++) {
-            RegionTickContext.begin(world, region.nextVirtualTime());
+            RegionTimeContext.begin(world, region.nextVirtualTime());
 
             ClientTickBridge.setCustomTickInProgress(true);
             try {
@@ -170,7 +170,7 @@ public class ClientRegionTicker {
                 }
             } finally {
                 ClientTickBridge.setCustomTickInProgress(false);
-                RegionTickContext.end();
+                RegionTimeContext.end();
             }
         }
 

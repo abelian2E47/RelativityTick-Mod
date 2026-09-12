@@ -1,5 +1,6 @@
 package com.abelian.mixin;
 
+import com.abelian.RegionTimeContext;
 import com.abelian.RelativityTickUtils;
 import com.abelian.ServerTickBridge;
 
@@ -33,7 +34,7 @@ public abstract class ServerWorldMixin  {
     @Inject(method = "tickChunk", at = @At("HEAD"), cancellable = true)
     private void skipChunkTick(net.minecraft.world.chunk.WorldChunk chunk, int randomTickSpeed, CallbackInfo ci) {
         ServerWorld serverWorld = RelativityTickUtils.getServer().getWorld(chunk.getWorld().getRegistryKey());
-        if (com.abelian.RegionTickContext.getTime(serverWorld) != null) return;
+        if (RegionTimeContext.getTime(serverWorld) != null) return;
         RegionTickManager region = RegionsManager.getRegionByChunk(serverWorld, chunk.getPos().toLong());
         if (region != null && region.isControlled()) {
             ci.cancel();

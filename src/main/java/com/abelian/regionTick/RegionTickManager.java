@@ -2,7 +2,7 @@ package com.abelian.regionTick;
 
 import com.abelian.RegionPersistentState;
 import com.abelian.config.RelativityTickConfig;
-import com.abelian.RegionTickContext;
+import com.abelian.RegionTimeContext;
 import com.abelian.ServerTickBridge;
 import com.abelian.network.ScheduledTickDataPayload;
 import com.abelian.network.ScheduledTickRecord;
@@ -203,7 +203,7 @@ public class    RegionTickManager {
     public long getSchedulingVirtualTime() {
         MinecraftServer server = RelativityTickUtils.getServer();
         ServerWorld world = server == null ? null : server.getWorld(dimension);
-        Long virtualTime = world == null ? null : RegionTickContext.getTime(world);
+        Long virtualTime = world == null ? null : RegionTimeContext.getTime(world);
         return virtualTime != null ? virtualTime : getVirtualTime();
     }
 
@@ -218,7 +218,7 @@ public class    RegionTickManager {
         setCurrentWorldTime(world.getTime());
         stepped++;
         long virtualTime = startTime + stepped;
-        RegionTickContext.begin(world, virtualTime);
+        RegionTimeContext.begin(world, virtualTime);
         try {
             BiConsumer<BlockPos, Block> filterBlockTicker = disableObserverTick
                     ? (pos, block) -> {
@@ -235,16 +235,15 @@ public class    RegionTickManager {
             }
             tickChunkWorld(world);
             RegionBlockEventProcessor.process(world, this);
-            this.tickEntities(world);
             this.tickBlockEntities(world);
+            this.tickEntities(world);
         } finally {
-            RegionTickContext.end();
+            RegionTimeContext.end();
         }
     }
 
     private void tickBlockEntities(ServerWorld world) {
-        //受控区域内锂会让闲置方块实体休眠(如漏斗入睡后不再被步进驱动);
-        //每步先按原版rebind重建ticker,锂在rebind时自行清除休眠状态
+        //防止漏斗休眠，lithium兼容
         ServerTickBridge.rebindBlockEntityTickers(world, chunkPositions);
         boolean shouldTick = world.getTickManager().shouldTick();
         ServerTickBridge.forEachBlockEntityTicker(world, chunkPositions, invoker -> {
