@@ -9,6 +9,11 @@ import java.util.HashSet;
 import java.util.Set;
 
 public class ClientRegion {
+    private static final float MIN_RENDER_PERIOD_MS = 4.0f;
+    private static final float MAX_RENDER_PERIOD_MS = 1000.0f;
+    private static final float MAX_PHASE = 0.25f;
+    private static final float MAX_ACCUMULATE_MS = 250.0f;
+
     private final String id;
     private String dimension;
     private final Set<Long> chunkPositions;
@@ -18,11 +23,12 @@ public class ClientRegion {
     private double rate;
     private double regionTPS;
     private double accumulator;
+    private long lastAccumulateNanos;
+    private float renderPeriodMs;
     private long virtualTime;
     private int pendingSteps;
     private boolean disableHopperTick;
     private boolean disableEntityTick;
-    private boolean disableObserverTick;
 
     public ClientRegion(RegionSyncPayload payload) {
         this.id = payload.id();
@@ -32,16 +38,19 @@ public class ClientRegion {
     }
 
     public void updateRegionState(RegionSyncPayload payload) {
+        boolean wasRunning = isRunning();
         this.dimension = payload.dimension();
         this.regionState = payload.state();
         this.rate = payload.rate();
         this.virtualTime = payload.virtualTime();
         this.disableHopperTick = payload.disableHopperTick();
         this.disableEntityTick = payload.disableEntityTick();
-        this.disableObserverTick = payload.disableObserverTick();
         replaceChunks(payload.chunkPositions());
         if (!isRunning()) {
             this.accumulator = 0.0;
+            this.lastAccumulateNanos = System.nanoTime();
+        } else if (!wasRunning) {
+            this.lastAccumulateNanos = System.nanoTime();
         }
     }
 
@@ -59,10 +68,35 @@ public class ClientRegion {
 
     public void updateRegionTPS(RegionTPSPayload payload){
         this.regionTPS = payload.TPS();
-        System.out.println("regionTPS is update to" + payload.TPS());
     }
 
-    public void recordStep() {
+    //为实体渲染插值承上启下
+    public void beginInterpolationSegment() {
+        long now = System.nanoTime();
+        float nominalPeriod = nominalBatchPeriodMs();
+
+        float actualGapMs = 0.0f;
+        if (interpolationState.lastTickTime != 0) {
+            actualGapMs = (now - interpolationState.lastTickTime) / 1_000_000.0f;
+        }
+
+        float newPeriod = (actualGapMs > 0.0f && isRunning())
+                ? clampPeriod(actualGapMs, nominalPeriod)
+                : nominalPeriod;
+
+        float previousPeriod = getRenderPeriodMs();
+        float overdueMs = actualGapMs > 0.0f
+                ? Math.max(0.0f, (1.0f - interpolationState.phase) * previousPeriod - actualGapMs)
+                : 0.0f;
+
+        this.renderPeriodMs = newPeriod;
+        interpolationState.phase = newPeriod > 0.0f ? Math.min(MAX_PHASE, overdueMs / newPeriod) : 0.0f;
+        interpolationState.lastPacketTime = now;
+        interpolationState.lastTickTime = now;
+        interpolationState.tickDelta = interpolationState.phase;
+    }
+
+    public void recordAuthoritySync() {
         long now = System.nanoTime();
         interpolationState.lastPacketTime = now;
         interpolationState.lastTickTime = now;
@@ -71,24 +105,56 @@ public class ClientRegion {
     }
 
     public void updateRenderDelta() {
-        if (regionTPS <= 0 || interpolationState.lastTickTime == 0) {
+        if (interpolationState.lastTickTime == 0) {
             interpolationState.tickDelta = 1.0f;
             return;
         }
 
         long now = System.nanoTime();
         float elapsedMs = (now - interpolationState.lastTickTime) / 1_000_000.0f;
-        interpolationState.tickDelta = Math.min(1.0f, interpolationState.phase + elapsedMs * (float) regionTPS / 1000.0f);
+        interpolationState.tickDelta = Math.min(1.0f, interpolationState.phase + elapsedMs / getRenderPeriodMs());
     }
 
     public int accumulateSteps() {
-        accumulator += rate / 20.0;
+        long now = System.nanoTime();
+        if (lastAccumulateNanos == 0) {
+            lastAccumulateNanos = now;
+            return 0;
+        }
+
+        float elapsedMs = Math.min(MAX_ACCUMULATE_MS, (now - lastAccumulateNanos) / 1_000_000.0f);
+        lastAccumulateNanos = now;
+
+        accumulator += rate * elapsedMs / 1000.0;
         int steps = 0;
         while (accumulator >= 1.0) {
             accumulator -= 1.0;
             steps++;
         }
         return steps;
+    }
+
+    private float getRenderPeriodMs() {
+        if (renderPeriodMs > 0.0f) {
+            return renderPeriodMs;
+        }
+        return nominalBatchPeriodMs();
+    }
+
+    private float clampPeriod(float periodMs, float nominal) {
+        float lower = Math.max(MIN_RENDER_PERIOD_MS, nominal * 0.25f);
+        float upper = Math.min(MAX_RENDER_PERIOD_MS, nominal * 4.0f);
+        return Math.max(lower, Math.min(upper, periodMs));
+    }
+
+    //按rate推算一批区域刻的名义渲染时长
+    private float nominalBatchPeriodMs() {
+        double effectiveRate = rate > 0 ? rate : regionTPS;
+        if (effectiveRate <= 0) {
+            return 50.0f;
+        }
+        double ticksPerBatch = Math.max(1.0, effectiveRate / 20.0);
+        return (float) (1000.0 * ticksPerBatch / effectiveRate);
     }
 
     public int consumePendingSteps(int maxSteps) {
@@ -99,14 +165,6 @@ public class ClientRegion {
 
     public void setPendingSteps(int pendingSteps) {
         this.pendingSteps = Math.max(0, pendingSteps);
-    }
-
-    //权威快照（如 dash）后复位插值状态，使渲染立即使用精确的实体位置
-    public void resetInterpolation() {
-        interpolationState.lastPacketTime = 0;
-        interpolationState.lastTickTime = 0;
-        interpolationState.phase = 0.0f;
-        interpolationState.tickDelta = 1.0f;
     }
 
     public boolean isControlled(){ return regionState != RegionTickManager.RegionState.RELEASED; }

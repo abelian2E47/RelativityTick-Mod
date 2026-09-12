@@ -67,6 +67,12 @@ public class ClientCommand {
                                 .then(ClientCommandManager.argument("value", DoubleArgumentType.doubleArg(0.005, 1.0))
                                         .executes(context -> setScheduledTickTextScale(
                                                 context.getSource(), DoubleArgumentType.getDouble(context, "value"))))))
+                .then(ClientCommandManager.literal("entityInterpolation")
+                        .executes(context -> showEntityInterpolation(context.getSource()))
+                        .then(ClientCommandManager.literal("enabled")
+                                .then(ClientCommandManager.argument("value", BoolArgumentType.bool())
+                                        .executes(context -> setEntityInterpolationEnabled(
+                                                context.getSource(), BoolArgumentType.getBool(context, "value"))))))
                 .then(ClientCommandManager.literal("regionLineWidth")
                         .executes(context -> showRegionLineWidth(context.getSource()))
                         .then(ClientCommandManager.argument("value", DoubleArgumentType.doubleArg(0.5, 16.0))
@@ -116,6 +122,22 @@ public class ClientCommand {
             return 0;
         }
         return showRegionLineWidth(source);
+    }
+
+    private static int showEntityInterpolation(FabricClientCommandSource source) {
+        source.sendFeedback(Text.translatable("relativitytick.command.client.config.entity_interpolation",
+                RelativityTickClientConfig.isEntityRenderInterpolationEnabled()));
+        return 1;
+    }
+
+    private static int setEntityInterpolationEnabled(FabricClientCommandSource source, boolean value) {
+        try {
+            RelativityTickClientConfig.setEntityRenderInterpolationEnabled(value);
+        } catch (IOException e) {
+            source.sendError(Text.translatable("relativitytick.command.error.config_save_failed").formatted(Formatting.RED));
+            return 0;
+        }
+        return showEntityInterpolation(source);
     }
 
     private static String formatValue(double value) {
