@@ -29,6 +29,9 @@ import static com.abelian.client.render.EntityInterpolationManager.ENTITY_INTERP
 public class ClientRegionTicker {
     private static final List<Entity> ENTITY_TICK_BUFFER = new ArrayList<>(128);
 
+    private static final double AUTHORITY_SKIP_DISTANCE_SQ = 0.0025;
+    private static final double AUTHORITY_SNAP_DISTANCE_SQ = 64.0;
+
     public static void clearRegion(String regionId) {
         ENTITY_INTERPOLATIONS.entrySet().removeIf(entry -> entry.getValue().regionId().equals(regionId));
     }
@@ -47,10 +50,6 @@ public class ClientRegionTicker {
             if (region == null) return;
 
             region.setPendingSteps(payload.steps());
-            if (payload.steps() <= 0) {
-                ENTITY_INTERPOLATIONS.entrySet().removeIf(entry -> entry.getValue().regionId().equals(payload.regionID()));
-                region.resetInterpolation();
-            }
         }));
 
         ClientPlayNetworking.registerGlobalReceiver(RegionEntitySyncPayload.ID, (payload, context) -> context.client().execute(() -> {
@@ -79,6 +78,8 @@ public class ClientRegionTicker {
             ClientWorld world = client.world;
             if (world == null) return;
 
+            pruneInterpolations(world);
+
             for (ClientRegion region : ClientRegionManager.getRegions()) {
                 if (!region.isControlled()) continue;
 
@@ -87,7 +88,7 @@ public class ClientRegionTicker {
                     stepsToTake = region.consumePendingSteps(stepsToTake);
                     if (stepsToTake > 0) {
                         tickRegion(world, region, region.getChunkPositions(), stepsToTake);
-                        region.recordStep();
+                        region.beginInterpolationSegment();
                     }
                     continue;
                 }
@@ -96,7 +97,7 @@ public class ClientRegionTicker {
                     int stepsToTake = region.accumulateSteps();
                     if (stepsToTake > 0) {
                         tickRegion(world, region, region.getChunkPositions(), stepsToTake);
-                        region.recordStep();
+                        region.beginInterpolationSegment();
                     }
                 }
             }
@@ -109,24 +110,47 @@ public class ClientRegionTicker {
         ClientRegion region = ClientRegionManager.getRegion(regionId);
         boolean smoothAlign = region != null && (region.isRunning() || region.isStepping());
 
-        int applied = 0;
+        int smoothed = 0;
         for (EntityStateRecord state : states) {
             Entity entity = world.getEntityById(state.entityId());
             if (entity == null || entity.isRemoved() || entity instanceof PlayerEntity) continue;
 
+            Vec3d serverPos = new Vec3d(state.x(), state.y(), state.z());
             Vec3d previous = smoothAlign ? entity.getPos() : null;
+
+            if (previous != null) {
+                double driftSq = previous.squaredDistanceTo(serverPos);
+                //双端坐标差距不大就不强行同步
+                if (driftSq < AUTHORITY_SKIP_DISTANCE_SQ) {
+                    continue;
+                }
+            }
+
             entity.refreshPositionAndAngles(state.x(), state.y(), state.z(), state.yaw(), state.pitch());
             entity.setVelocity(new Vec3d(state.velocityX(), state.velocityY(), state.velocityZ()));
-            if (previous != null) {
+
+            if (previous != null && previous.squaredDistanceTo(entity.getPos()) <= AUTHORITY_SNAP_DISTANCE_SQ) {
                 ENTITY_INTERPOLATIONS.put(entity.getId(),
                         new EntityInterpolationManager.EntityRenderInterpolation(regionId, previous, entity.getPos()));
+                smoothed++;
+            } else {
+                ENTITY_INTERPOLATIONS.remove(entity.getId());
             }
-            applied++;
         }
 
-        if (smoothAlign && applied > 0) {
-            region.recordStep();
+        if (smoothAlign && smoothed > 0) {
+            region.recordAuthoritySync();
         }
+    }
+
+    //清理map
+    private static void pruneInterpolations(ClientWorld world) {
+        if (ENTITY_INTERPOLATIONS.isEmpty()) return;
+
+        ENTITY_INTERPOLATIONS.entrySet().removeIf(entry -> {
+            Entity entity = world.getEntityById(entry.getKey());
+            return entity == null || entity.isRemoved();
+        });
     }
 
     private static void applyPassengerStates(ClientWorld world, PassengerSyncPayload payload) {

@@ -2,6 +2,7 @@ package com.abelian.client.mixin;
 
 import com.abelian.client.clientRegionTick.ClientRegion;
 import com.abelian.client.clientRegionTick.ClientRegionManager;
+import com.abelian.client.config.RelativityTickClientConfig;
 import com.abelian.client.render.EntityInterpolationManager;
 import com.abelian.client.render.RegionTickDeltaManager;
 import net.minecraft.client.render.Camera;
@@ -33,29 +34,42 @@ public class EntityRenderDispatcherMixin {
 
         ChunkPos entityChunkPos = regionAnchor.getChunkPos();
         ClientRegion region = regionAnchor.getWorld() instanceof ClientWorld world ? ClientRegionManager.getRegion(world, entityChunkPos) : null;
-        if (region != null && region.isControlled()) {
-            String regionID = region.getId();
-            float tickDelta = RegionTickDeltaManager.getTickDelta(regionID);
-            if (!region.isRunning() && !RegionTickDeltaManager.hasActiveInterpolation(regionID)) {
-                args.set(4, 1.0f);
-                return;
-            }
-            args.set(4, tickDelta);
+        if (region == null || !region.isControlled()) return;
+
+        //关闭插值时渲染实体在当前tick的服务端坐标
+        if (!RelativityTickClientConfig.isEntityRenderInterpolationEnabled()) {
             Vec3d camPos = this.camera.getPos();
-            Vec3d worldRenderPos = isPassenger
-                    ? getPassengerRenderPos(entity, vehicle, regionID, tickDelta)
-                    : EntityInterpolationManager.getInterpolatedEntityPos(entity, regionID, tickDelta);
-            Vec3d relativePos = worldRenderPos.subtract(camPos);
-            args.set(1, relativePos.x);
-            args.set(2, relativePos.y);
-            args.set(3, relativePos.z);
+            Vec3d exactPos = entity.getPos();
+            args.set(1, exactPos.x - camPos.x);
+            args.set(2, exactPos.y - camPos.y);
+            args.set(3, exactPos.z - camPos.z);
+            args.set(4, 1.0f);
+            return;
         }
+
+        String regionID = region.getId();
+        EntityInterpolationManager.EntityRenderInterpolation anchorInterpolation = EntityInterpolationManager.getInterpolation(regionAnchor, regionID);
+        if (anchorInterpolation == null) return;
+
+        float tickDelta = RegionTickDeltaManager.getTickDelta(regionID);
+        args.set(4, tickDelta);
+
+        Vec3d camPos = this.camera.getPos();
+        Vec3d worldRenderPos = isPassenger
+                ? getPassengerRenderPos(entity, vehicle, anchorInterpolation, tickDelta)
+                : EntityInterpolationManager.interpolate(anchorInterpolation, tickDelta);
+        Vec3d relativePos = worldRenderPos.subtract(camPos);
+        args.set(1, relativePos.x);
+        args.set(2, relativePos.y);
+        args.set(3, relativePos.z);
     }
 
     //乘客特殊处理
     @Unique
-    private static Vec3d getPassengerRenderPos(Entity passenger, Entity vehicle, String regionID, float tickDelta) {
-        Vec3d vehicleRenderPos = EntityInterpolationManager.getInterpolatedEntityPos(vehicle, regionID, tickDelta);
+    private static Vec3d getPassengerRenderPos(Entity passenger, Entity vehicle,
+                                               EntityInterpolationManager.EntityRenderInterpolation vehicleInterpolation,
+                                               float tickDelta) {
+        Vec3d vehicleRenderPos = EntityInterpolationManager.interpolate(vehicleInterpolation, tickDelta);
         Vec3d passengerOffset = vehicle.getPassengerRidingPos(passenger)
                 .subtract(vehicle.getPos())
                 .subtract(passenger.getVehicleAttachmentPos(vehicle));
