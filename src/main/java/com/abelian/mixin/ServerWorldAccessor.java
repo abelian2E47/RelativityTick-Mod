@@ -21,4 +21,9 @@ public interface ServerWorldAccessor {
 
     @Accessor("entityList")
     net.minecraft.world.EntityList getEntityList();
+
+    // [修改点1] 暴露 ServerWorld.inBlockTick 的写入口：区域步进需要在 step 内按原版 ServerWorld.tick
+    // 的开窗方式（L352 置 true → L403 在 processSyncedBlockEvents 之后置 false）设置该标志。
+    @Accessor("inBlockTick")
+    void setInBlockTick(boolean inBlockTick);
 }
