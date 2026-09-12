@@ -57,6 +57,7 @@
   "relativitytick.command.client.config.scheduled_tick_render": "scheduledTickRender.enabled：%s",
   "relativitytick.command.client.config.text_scale": "scheduledTickRender.textScale：%s",
   "relativitytick.command.client.config.region_line_width": "regionLineWidth：%s",
+  "relativitytick.command.client.config.entity_interpolation": "entityInterpolation.enabled：%s",
   "key.relativitytick.start_selecting": "切换区域选择",
   "category.relativitytick": "RelativityTick",
   "relativitytick.selection.chunk_added": "已添加区块：%s %s",
