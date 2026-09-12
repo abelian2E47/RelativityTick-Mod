@@ -1,6 +1,6 @@
 package com.abelian.mixin;
 
-import com.abelian.RegionTickContext;
+import com.abelian.RegionTimeContext;
 import com.abelian.regionTick.RegionTickManager;
 import com.abelian.regionTick.RegionsManager;
 import net.minecraft.entity.SpawnGroup;
@@ -20,7 +20,7 @@ public abstract class SpawnHelperMixin {
     private static void skipSpawning(ServerWorld world, WorldChunk chunk,
                                                      SpawnHelper.Info info, List<SpawnGroup> groups,
                                                      CallbackInfo ci) {
-        if (RegionTickContext.getTime(world) != null) return;
+        if (RegionTimeContext.getTime(world) != null) return;
         RegionTickManager region = RegionsManager.getRegionByChunk(world, chunk.getPos().toLong());
         if (region != null && region.isControlled()) {
             ci.cancel();

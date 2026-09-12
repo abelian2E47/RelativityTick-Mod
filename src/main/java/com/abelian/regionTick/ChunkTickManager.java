@@ -4,7 +4,7 @@ import com.abelian.mixin.WorldTickSchedulerAccessor;
 import net.minecraft.world.tick.ChunkTickScheduler;
 import net.minecraft.world.tick.OrderedTick;
 import net.minecraft.world.tick.WorldTickScheduler;
-import java.util.List;
+import java.util.*;
 
 
 public class ChunkTickManager {
