@@ -22,10 +22,10 @@ public class TickMangerMixin {
     @Unique
     private boolean shouldFreeze(Entity entity) {
         if (entity instanceof net.minecraft.entity.player.PlayerEntity) return false;
-        if (entity.getWorld().isClient()) return false;
+        if (entity.getEntityWorld().isClient()) return false;
 
         long posLong = ChunkPos.toLong(entity.getBlockPos());
-        var region = RegionsManager.getRegionByChunk((ServerWorld) entity.getWorld(), posLong);
+        var region = RegionsManager.getRegionByChunk((ServerWorld) entity.getEntityWorld(), posLong);
 
         return region != null && region.isControlled();
     }

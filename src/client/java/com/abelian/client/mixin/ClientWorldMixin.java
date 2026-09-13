@@ -18,10 +18,10 @@ public class ClientWorldMixin {
         if (ClientTickBridge.isCustomTickInProgress()) return;
 
         if (entity instanceof PlayerEntity) return;
-        if (!entity.getWorld().isClient()) return;
+        if (!entity.getEntityWorld().isClient()) return;
 
         ChunkPos chunkPos = entity.getChunkPos();
-        if (!ClientRegionManager.isRegionControlled((ClientWorld) entity.getWorld(), chunkPos)) return;
+        if (!ClientRegionManager.isRegionControlled((ClientWorld) entity.getEntityWorld(), chunkPos)) return;
 
         ci.cancel();
     }

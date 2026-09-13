@@ -23,22 +23,23 @@ public abstract class EntityMixin {
 
     @Shadow @Nullable public abstract Entity getVehicle();
 
-    @Shadow public abstract World getWorld();
+    @Shadow public abstract World getEntityWorld();
 
-    @Inject(method = "startRiding(Lnet/minecraft/entity/Entity;Z)Z", at = @At("RETURN"))
-    private void startRidingSync(Entity vehicle, boolean force, CallbackInfoReturnable<Boolean> cir) {
-        if (this.getWorld().isClient() || !cir.getReturnValue()) return;
+    //1.21.11 的骑乘入口改为 startRiding(Entity, boolean force, boolean emitEvent)，单参版本内部委托到它
+    @Inject(method = "startRiding(Lnet/minecraft/entity/Entity;ZZ)Z", at = @At("RETURN"))
+    private void startRidingSync(Entity vehicle, boolean force, boolean emitEvent, CallbackInfoReturnable<Boolean> cir) {
+        if (this.getEntityWorld().isClient() || !cir.getReturnValue()) return;
 
         PassengerSyncPayload payload = new PassengerSyncPayload(this.getId(), vehicle.getId());
-        sendPayload(payload, vehicle.getWorld().getRegistryKey());
+        sendPayload(payload, vehicle.getEntityWorld().getRegistryKey());
     }
 
     @Inject(method = "stopRiding", at = @At("HEAD"))
     private void stopRidingSync(CallbackInfo ci) {
-        if (this.getWorld().isClient() || this.getVehicle() == null) return;
+        if (this.getEntityWorld().isClient() || this.getVehicle() == null) return;
 
         PassengerSyncPayload payload = new PassengerSyncPayload(this.getId(), -1);
-        sendPayload(payload, this.getWorld().getRegistryKey());
+        sendPayload(payload, this.getEntityWorld().getRegistryKey());
     }
 
     @Unique

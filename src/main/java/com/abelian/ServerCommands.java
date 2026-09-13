@@ -75,7 +75,7 @@ public class ServerCommands {
         dispatcher.register(relativityConfigCommand("relativityTick"));
 
         dispatcher.register(CommandManager.literal("regionManager")
-                .requires(source -> source.hasPermissionLevel(2))
+                .requires(CommandManager.requirePermissionLevel(CommandManager.GAMEMASTERS_CHECK))
                 .then(CommandManager.literal("remove")
                         .then(regionId().executes(ctx -> executeRemove(RegionCommandContext.of(ctx)))))
                 .then(CommandManager.literal("setting")
@@ -93,7 +93,7 @@ public class ServerCommands {
                                                 .executes(ctx -> setTickDurationLimit(RegionCommandContext.of(ctx), DoubleArgumentType.getDouble(ctx, "value"))))))));
 
         dispatcher.register(CommandManager.literal("regionTick")
-                .requires(source -> source.hasPermissionLevel(2))
+                .requires(CommandManager.requirePermissionLevel(CommandManager.GAMEMASTERS_CHECK))
                 .then(CommandManager.literal("takeover")
                         .executes(ctx -> toggleTakeover(RegionCommandContext.current(ctx)))
                         .then(regionId().executes(ctx -> toggleTakeover(RegionCommandContext.of(ctx)))))
@@ -136,19 +136,19 @@ public class ServerCommands {
                 .then(CommandManager.literal("maxMspt")
                         .executes(ctx -> showMaxMsptConfig(ctx.getSource()))
                         .then(CommandManager.argument("value", DoubleArgumentType.doubleArg(1.0, 50.0))
-                                .requires(source -> source.hasPermissionLevel(2))
+                                .requires(CommandManager.requirePermissionLevel(CommandManager.GAMEMASTERS_CHECK))
                                 .executes(ctx -> setMaxMspt(ctx.getSource(), DoubleArgumentType.getDouble(ctx, "value")))))
                 .then(CommandManager.literal("chunkTick")
                         .executes(ctx -> showChunkTickConfig(ctx.getSource()))
                         .then(CommandManager.literal("enabled")
                                 .then(CommandManager.argument("value", BoolArgumentType.bool())
-                                        .requires(source -> source.hasPermissionLevel(2))
+                                        .requires(CommandManager.requirePermissionLevel(CommandManager.GAMEMASTERS_CHECK))
                                         .executes(ctx -> setChunkTickEnabled(
                                                 ctx.getSource(), BoolArgumentType.getBool(ctx, "value"))))))
                 .then(CommandManager.literal("scheduledTickSend")
                         .executes(ctx -> showScheduledTickSendConfig(ctx.getSource()))
                         .then(CommandManager.argument("value", BoolArgumentType.bool())
-                                .requires(source -> source.hasPermissionLevel(2))
+                                .requires(CommandManager.requirePermissionLevel(CommandManager.GAMEMASTERS_CHECK))
                                 .executes(ctx -> setScheduledTickSendEnabled(
                                         ctx.getSource(), BoolArgumentType.getBool(ctx, "value")))));
     }

@@ -14,6 +14,7 @@ import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.block.Block;
+import net.minecraft.command.DefaultPermissions;
 import net.minecraft.fluid.Fluid;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.MinecraftServer;
@@ -88,11 +89,11 @@ public class RelativityTick implements ModInitializer {
 
         ServerPlayNetworking.registerGlobalReceiver(SelectionOperationPayload.ID,
                 (payload, context) -> {
-                    if (!context.player().hasPermissionLevel(2)) return;
+                    if (!context.player().getPermissions().hasPermission(DefaultPermissions.GAMEMASTERS)) return;
                     context.server().execute(() -> {
                         Set<Long> chunkPositions = payload.chunkPositions();
                         String id = payload.id();
-                        RegionsManager.createRegion(id, chunkPositions, context.player().getServerWorld());
+                        RegionsManager.createRegion(id, chunkPositions, context.player().getEntityWorld());
                     });
                 });
 

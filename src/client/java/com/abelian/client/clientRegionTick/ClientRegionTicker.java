@@ -119,7 +119,7 @@ public class ClientRegionTicker {
             if (entity == null || entity.isRemoved() || entity instanceof PlayerEntity) continue;
 
             Vec3d serverPos = new Vec3d(state.x(), state.y(), state.z());
-            Vec3d previous = smoothAlign ? entity.getPos() : null;
+            Vec3d previous = smoothAlign ? entity.getEntityPos() : null;
 
             if (previous != null) {
                 double driftSq = previous.squaredDistanceTo(serverPos);
@@ -132,9 +132,9 @@ public class ClientRegionTicker {
             entity.refreshPositionAndAngles(state.x(), state.y(), state.z(), state.yaw(), state.pitch());
             entity.setVelocity(new Vec3d(state.velocityX(), state.velocityY(), state.velocityZ()));
 
-            if (previous != null && previous.squaredDistanceTo(entity.getPos()) <= AUTHORITY_SNAP_DISTANCE_SQ) {
+            if (previous != null && previous.squaredDistanceTo(entity.getEntityPos()) <= AUTHORITY_SNAP_DISTANCE_SQ) {
                 ENTITY_INTERPOLATIONS.put(entity.getId(),
-                        new EntityInterpolationManager.EntityRenderInterpolation(regionId, previous, entity.getPos()));
+                        new EntityInterpolationManager.EntityRenderInterpolation(regionId, previous, entity.getEntityPos()));
                 smoothed++;
             } else {
                 ENTITY_INTERPOLATIONS.remove(entity.getId());
@@ -161,7 +161,7 @@ public class ClientRegionTicker {
         if (payload.vehicleID() != -1 && passenger != null){
             Entity vehicle = world.getEntityById(payload.vehicleID());
             if (vehicle != null) {
-                passenger.startRiding(vehicle, true);
+                passenger.startRiding(vehicle, true, false);
             }
         }else if (payload.vehicleID() == -1 && passenger != null){
             passenger.stopRiding();
@@ -185,7 +185,7 @@ public class ClientRegionTicker {
                     for (Entity entity : ENTITY_TICK_BUFFER) {
                         if (entity.isRemoved()) continue;
 
-                        previousPositions.putIfAbsent(entity.getId(), entity.getPos());
+                        previousPositions.putIfAbsent(entity.getId(), entity.getEntityPos());
                         tickedEntities.put(entity.getId(), entity);
                         ((ClientWorldAccessor) world).invokeTickEntity(entity);
                     }
@@ -205,7 +205,7 @@ public class ClientRegionTicker {
             Entity entity = entry.getValue();
             Vec3d previous = previousPositions.get(entry.getKey());
             if (previous != null && !entity.isRemoved()) {
-                ENTITY_INTERPOLATIONS.put(entry.getKey(), new EntityInterpolationManager.EntityRenderInterpolation(region.getId(), previous, entity.getPos()));
+                ENTITY_INTERPOLATIONS.put(entry.getKey(), new EntityInterpolationManager.EntityRenderInterpolation(region.getId(), previous, entity.getEntityPos()));
             }
         }
     }

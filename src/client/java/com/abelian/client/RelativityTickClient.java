@@ -15,6 +15,7 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
+import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
 
@@ -49,7 +50,8 @@ public class RelativityTickClient implements ClientModInitializer {
 				"key.relativitytick.start_selecting",
 				InputUtil.Type.KEYSYM,
 				InputUtil.UNKNOWN_KEY.getCode(),
-				"category.relativitytick"));
+				//1.21.11 的按键分类改为 KeyBinding.Category（标签键为 key.category.<命名空间>.<路径>）
+				KeyBinding.Category.create(Identifier.of("relativitytick", "main"))));
 
 
 

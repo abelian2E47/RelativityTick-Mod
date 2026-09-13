@@ -28,7 +28,7 @@ import java.util.Set;
 public class ClientCommand {
     public static void register(CommandDispatcher<ServerCommandSource> dispatcher, CommandRegistryAccess registryAccess, CommandManager.RegistrationEnvironment environment) {
         dispatcher.register(CommandManager.literal("regionManager")
-                .requires(source -> source.hasPermissionLevel(2))
+                .requires(CommandManager.requirePermissionLevel(CommandManager.GAMEMASTERS_CHECK))
                 .then(CommandManager.literal("create")
                         .then(CommandManager.argument("id", StringArgumentType.string())
                                 .executes(context -> create(context.getSource(), StringArgumentType.getString(context, "id")))

@@ -21,9 +21,9 @@ public abstract class ServerWorldMixin  {
     private <T extends Entity> void skipEntityTick(Entity entity, CallbackInfo ci) {
         if (ServerTickBridge.isCustomTickInProgress()) return;
         if (entity instanceof PlayerEntity) return;
-        if (entity.getWorld().isClient()) return;
+        if (entity.getEntityWorld().isClient()) return;
 
-        ServerWorld world = (ServerWorld) entity.getWorld();
+        ServerWorld world = (ServerWorld) entity.getEntityWorld();
         long chunkPosLong = ChunkPos.toLong(entity.getBlockPos());
         RegionTickManager region = RegionsManager.getRegionByChunk(world, chunkPosLong);
         if (region != null && region.isControlled()) {

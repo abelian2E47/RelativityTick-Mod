@@ -3,13 +3,13 @@
   "package": "com.abelian.client.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
-    "BlockEntityRenderDispatcherMixin",
+    "BlockEntityRenderManagerMixin",
     "ClientEntityManagerAccessor",
     "ClientWorldChunkDirectBlockEntityTickInvokerMixin",
     "ClientWorldAccessor",
     "ClientWorldMixin",
     "DebugRendererMixin",
-    "EntityRenderDispatcherMixin"
+    "EntityRenderManagerMixin"
   ],
   "injectors": {
     "defaultRequire": 1

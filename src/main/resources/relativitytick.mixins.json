@@ -7,8 +7,6 @@
     "EntityListMixin",
     "BlockEntityMixin",
     "EntityMixin",
-    "ServerChunkLoadingManagerAccessor",
-    "ServerChunkManagerAccessor",
     "ServerChunkManagerInhabitedTimeMixin",
     "ServerEntityManagerAccessor",
     "ServerWorldAccessor",
@@ -20,6 +18,7 @@
     "WorldChunkAccessor",
     "WorldChunkDirectBlockEntityTickInvokerMixin",
     "WorldMixin",
+    "WorldAccessTimeMixin",
     "WorldTickSchedulerAccessor",
     "WorldAccessor"
   ],

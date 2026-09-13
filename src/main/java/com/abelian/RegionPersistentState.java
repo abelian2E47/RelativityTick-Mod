@@ -1,9 +1,14 @@
 package com.abelian;
 
+import com.mojang.datafixers.util.Pair;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.DataResult;
+import com.mojang.serialization.DynamicOps;
 import net.minecraft.datafixer.DataFixTypes;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtElement;
 import net.minecraft.nbt.NbtIo;
+import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.NbtSizeTracker;
 import net.minecraft.nbt.NbtList;
 import net.minecraft.registry.RegistryKey;
@@ -12,6 +17,7 @@ import net.minecraft.registry.RegistryWrapper;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.Identifier;
 import net.minecraft.world.PersistentState;
+import net.minecraft.world.PersistentStateType;
 import net.minecraft.world.World;
 import net.minecraft.util.WorldSavePath;
 
@@ -30,15 +36,16 @@ public class RegionPersistentState extends PersistentState {
     public static final String ID = "relativitytick_regions";
     private static final String CONTENTS_KEY = "contents";
     private static final String CONTENT_KEY = "relativitytick";
-    private static final PersistentState.Type<RegionPersistentState> TYPE = new PersistentState.Type<>(
+    private static final PersistentStateType<RegionPersistentState> TYPE = new PersistentStateType<>(
+            ID,
             RegionPersistentState::new,
-            RegionPersistentState::fromNbt,
+            Codec.of(RegionPersistentState::encode, RegionPersistentState::decode),
             DataFixTypes.SAVED_DATA_COMMAND_STORAGE
     );
 
     private final Map<String, RegionData> regions = new HashMap<>();
 
-    public static PersistentState.Type<RegionPersistentState> getType() {
+    public static PersistentStateType<RegionPersistentState> getType() {
         return TYPE;
     }
 
@@ -53,13 +60,13 @@ public class RegionPersistentState extends PersistentState {
             } catch (ZipException ignored) {
                 root = NbtIo.read(file);
             }
-            NbtCompound data = root.getCompound("data");
-            if (!data.contains("regions", NbtElement.LIST_TYPE)) return;
+            NbtCompound data = root.getCompoundOrEmpty("data");
+            if (!data.contains("regions")) return;
 
             NbtCompound payload = new NbtCompound();
             payload.put("regions", data.get("regions").copy());
-            NbtCompound contents = data.contains(CONTENTS_KEY, NbtElement.COMPOUND_TYPE)
-                    ? data.getCompound(CONTENTS_KEY)
+            NbtCompound contents = data.contains(CONTENTS_KEY)
+                    ? data.getCompoundOrEmpty(CONTENTS_KEY)
                     : new NbtCompound();
             contents.put(CONTENT_KEY, payload);
             data.remove("regions");
@@ -79,17 +86,16 @@ public class RegionPersistentState extends PersistentState {
 
     public static RegionPersistentState fromNbt(NbtCompound nbt, RegistryWrapper.WrapperLookup registries) {
         RegionPersistentState state = new RegionPersistentState();
-        NbtCompound payload = nbt.getCompound(CONTENTS_KEY).getCompound(CONTENT_KEY);
-        NbtList regionList = payload.getList("regions", NbtElement.COMPOUND_TYPE);
+        NbtCompound payload = nbt.getCompoundOrEmpty(CONTENTS_KEY).getCompoundOrEmpty(CONTENT_KEY);
+        NbtList regionList = payload.getListOrEmpty("regions");
         for (int i = 0; i < regionList.size(); i++) {
-            NbtCompound regionNbt = regionList.getCompound(i);
-            String id = regionNbt.getString("id");
+            NbtCompound regionNbt = regionList.getCompoundOrEmpty(i);
+            String id = regionNbt.getString("id", "");
             if (id.isEmpty()) continue;
 
-            RegistryKey<World> dimension = RegistryKey.of(RegistryKeys.WORLD, Identifier.of(regionNbt.getString("dimension")));
+            RegistryKey<World> dimension = RegistryKey.of(RegistryKeys.WORLD, Identifier.of(regionNbt.getString("dimension", World.OVERWORLD.getValue().toString())));
             Set<Long> chunks = new HashSet<>();
-            long[] chunkArray = regionNbt.getLongArray("chunks");
-            for (long chunk : chunkArray) {
+            for (long chunk : regionNbt.getLongArray("chunks").orElseGet(() -> new long[0])) {
                 chunks.add(chunk);
             }
 
@@ -100,8 +106,11 @@ public class RegionPersistentState extends PersistentState {
         return state;
     }
 
-    @Override
     public NbtCompound writeNbt(NbtCompound nbt, RegistryWrapper.WrapperLookup registries) {
+        return writeNbt(nbt);
+    }
+
+    private NbtCompound writeNbt(NbtCompound nbt) {
         NbtList regionList = new NbtList();
         for (Map.Entry<String, RegionData> entry : regions.entrySet()) {
             RegionData region = entry.getValue();
@@ -118,6 +127,19 @@ public class RegionPersistentState extends PersistentState {
         contents.put(CONTENT_KEY, payload);
         nbt.put(CONTENTS_KEY, contents);
         return nbt;
+    }
+
+    private static <T> DataResult<T> encode(RegionPersistentState state, DynamicOps<T> ops, T prefix) {
+        NbtCompound nbt = state.writeNbt(new NbtCompound());
+        return DataResult.success(NbtOps.INSTANCE.convertTo(ops, nbt));
+    }
+
+    private static <T> DataResult<Pair<RegionPersistentState, T>> decode(DynamicOps<T> ops, T input) {
+        NbtElement nbt = ops.convertTo(NbtOps.INSTANCE, input);
+        if (!(nbt instanceof NbtCompound compound)) {
+            return DataResult.error(() -> "Expected compound for RelativityTick state");
+        }
+        return DataResult.success(Pair.of(fromNbt(compound, null), ops.empty()));
     }
 
     public Map<String, RegionData> getRegions() {

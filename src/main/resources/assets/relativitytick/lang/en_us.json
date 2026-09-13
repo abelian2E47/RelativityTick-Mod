@@ -59,7 +59,7 @@
   "relativitytick.command.client.config.region_line_width": "regionLineWidth: %s",
   "relativitytick.command.client.config.entity_interpolation": "entityInterpolation.enabled: %s",
   "key.relativitytick.start_selecting": "Toggle region selection",
-  "category.relativitytick": "RelativityTick",
+  "key.category.relativitytick.main": "RelativityTick",
   "relativitytick.selection.chunk_added": "add chunk: %s %s",
   "relativitytick.selection.chunk_removed": "remove chunk: %s %s",
   "relativitytick.selection.chunk_not_selected": "The region is not selected: %s %s",
