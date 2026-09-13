@@ -444,6 +444,11 @@ public class    RegionTickManager {
         SpawnHelper.Info spawnInfo = ServerTickBridge.getSpawnInfo(world);
         boolean doMobSpawning = world.getGameRules().getBoolean(net.minecraft.world.GameRules.DO_MOB_SPAWNING);
         int randomTickSpeed = world.getGameRules().getInt(net.minecraft.world.GameRules.RANDOM_TICK_SPEED);
+        //MC 1.21 的 SpawnHelper.spawn 内部按组做 spawnAnimals/spawnMonsters/rare/isBelowCap 过滤，
+        //等价于 1.21.4 的 collectSpawnableGroups；此处补上原版 tickChunks 的外层 (spawnMonsters || spawnAnimals) 守卫，
+        //使其与 1.21.4 的 !spawnGroups.isEmpty() 守卫行为一致
+        boolean canSpawn = doMobSpawning
+                && (managerAccessor.getSpawnMonsters() || managerAccessor.getSpawnAnimals());
 
         ServerChunkManager chunkManager = world.getChunkManager();
 
@@ -456,7 +461,7 @@ public class    RegionTickManager {
             //区块时间
             chunk.increaseInhabitedTime(1L);
             //生物生成
-            if (doMobSpawning && world.getWorldBorder().contains(chunkPos)) {
+            if (canSpawn && world.getWorldBorder().contains(chunkPos)) {
                 SpawnHelper.spawn(world, chunk, spawnInfo,
                         managerAccessor.getSpawnAnimals(),
                         managerAccessor.getSpawnMonsters(),
