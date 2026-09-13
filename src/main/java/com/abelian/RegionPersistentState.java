@@ -61,13 +61,12 @@ public class RegionPersistentState extends PersistentState {
                 root = NbtIo.read(file);
             }
             NbtCompound data = root.getCompoundOrEmpty("data");
-            if (!data.contains("regions")) return;
+            //保持 1.21.4 的带类型判定：1.21.8 移除了 contains(key, type) 重载，改用返回 Optional 的类型化 getter
+            if (data.getList("regions").isEmpty()) return;
 
             NbtCompound payload = new NbtCompound();
             payload.put("regions", data.get("regions").copy());
-            NbtCompound contents = data.contains(CONTENTS_KEY)
-                    ? data.getCompoundOrEmpty(CONTENTS_KEY)
-                    : new NbtCompound();
+            NbtCompound contents = data.getCompound(CONTENTS_KEY).orElseGet(NbtCompound::new);
             contents.put(CONTENT_KEY, payload);
             data.remove("regions");
             data.put(CONTENTS_KEY, contents);
@@ -93,7 +92,7 @@ public class RegionPersistentState extends PersistentState {
             String id = regionNbt.getString("id", "");
             if (id.isEmpty()) continue;
 
-            RegistryKey<World> dimension = RegistryKey.of(RegistryKeys.WORLD, Identifier.of(regionNbt.getString("dimension", World.OVERWORLD.getValue().toString())));
+            RegistryKey<World> dimension = RegistryKey.of(RegistryKeys.WORLD, Identifier.of(regionNbt.getString("dimension", "")));
             Set<Long> chunks = new HashSet<>();
             for (long chunk : regionNbt.getLongArray("chunks").orElseGet(() -> new long[0])) {
                 chunks.add(chunk);

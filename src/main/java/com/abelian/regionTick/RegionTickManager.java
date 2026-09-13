@@ -23,6 +23,8 @@ import java.util.Queue;
 
 import net.minecraft.util.math.ChunkPos;
 import com.abelian.mixin.ServerWorldAccessor;
+import com.abelian.mixin.ServerChunkManagerAccessor;
+import com.abelian.mixin.ServerWorldEntityAccessor;
 import com.abelian.network.EntityStateRecord;
 import net.minecraft.block.Block;
 import net.minecraft.block.Blocks;
@@ -439,10 +441,15 @@ public class    RegionTickManager {
         if (!RelativityTickConfig.isChunkTickEnabled()) return;
 
         SpawnHelper.Info spawnInfo = ServerTickBridge.getSpawnInfo(world);
+        ServerChunkManagerAccessor managerAccessor = (ServerChunkManagerAccessor) world.getChunkManager();
         boolean doMobSpawning = world.getGameRules().getBoolean(net.minecraft.world.GameRules.DO_MOB_SPAWNING);
         int randomTickSpeed = world.getGameRules().getInt(net.minecraft.world.GameRules.RANDOM_TICK_SPEED);
         List<SpawnGroup> spawnGroups = doMobSpawning
-                ? SpawnHelper.collectSpawnableGroups(spawnInfo, true, true, world.getTime() % 400L == 0L)
+                ? SpawnHelper.collectSpawnableGroups(
+                        spawnInfo,
+                        managerAccessor.getSpawnAnimals(),
+                        managerAccessor.getSpawnMonsters(),
+                        world.getTime() % 400L == 0L)
                 : List.of();
 
         ServerChunkManager chunkManager = world.getChunkManager();
@@ -452,9 +459,16 @@ public class    RegionTickManager {
 
             WorldChunk chunk = chunkManager.getWorldChunk(chunkPos.x, chunkPos.z);
             if (chunk == null) continue;
-            if (!world.shouldTickTestAt(chunkPos)) continue;
+            //1.21.8 的 ServerWorld.shouldTickTestAt 额外附加了 isLoaded 判定；
+            //ServerEntityManager.shouldTick(ChunkPos) 与 1.21.4 的实现完全一致，直接沿用以保持行为不变
+            if (!((ServerWorldEntityAccessor) world).getEntityManager().shouldTick(chunkPos)) continue;
             //区块时间
             chunk.increaseInhabitedTime(1L);
+            //雷暴：1.21.8 已把 thunder 从 ServerWorld.tickChunk 拆分为 tickThunder，
+            //为保持 1.21.4（thunder 在 tickChunk 内、受 shouldTickBlocksInChunk 门控）的行为需在此显式补回
+            if (world.shouldTickBlocksInChunk(chunkPosLong)) {
+                world.tickThunder(chunk);
+            }
             //生物生成
             if (!spawnGroups.isEmpty()
                     && world.getWorldBorder().contains(chunkPos)) {
