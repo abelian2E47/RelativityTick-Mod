@@ -1,5 +1,6 @@
 package com.abelian;
 
+import com.abelian.mixin.ServerChunkManagerAccessor;
 import com.abelian.mixin.ServerWorldAccessor;
 import com.abelian.mixin.WorldAccessor;
 import com.abelian.mixin.WorldChunkAccessor;
@@ -7,10 +8,12 @@ import com.abelian.regionTick.RegionTickManager;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.entity.Entity;
+import net.minecraft.server.world.ServerChunkLoadingManager;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
 import net.minecraft.world.EntityList;
+import net.minecraft.world.SpawnDensityCapper;
 import net.minecraft.world.SpawnHelper;
 import net.minecraft.world.World;
 import net.minecraft.world.chunk.BlockEntityTickInvoker;
@@ -273,10 +276,14 @@ public class ServerTickBridge {
     }
 
     private static SpawnHelper.Info createSpawnInfo(ServerWorld world) {
-        SpawnHelper.Info info = world.getChunkManager().getSpawnInfo();
-        if (info == null) {
-            throw new IllegalStateException("Spawn info is unavailable outside chunk ticking");
-        }
-        return info;
+        ServerChunkManagerAccessor managerAccessor = (ServerChunkManagerAccessor) world.getChunkManager();
+        ServerChunkLoadingManager loadingManager = managerAccessor.getChunkLoadingManager();
+        //MC 1.21.11 把 getTickedChunkCount 从 ChunkTicketManager 移到了 ChunkLevelManager
+        return SpawnHelper.setupSpawn(
+                loadingManager.getLevelManager().getTickedChunkCount(),
+                world.iterateEntities(),
+                managerAccessor::invokeIfChunkLoaded,
+                new SpawnDensityCapper(loadingManager)
+        );
     }
 }

@@ -23,6 +23,8 @@ import java.util.Queue;
 
 import net.minecraft.util.math.ChunkPos;
 import com.abelian.mixin.ServerWorldAccessor;
+import com.abelian.mixin.ServerChunkManagerAccessor;
+import com.abelian.mixin.ServerWorldEntityAccessor;
 import com.abelian.network.EntityStateRecord;
 import net.minecraft.block.Block;
 import net.minecraft.block.Blocks;
@@ -194,7 +196,12 @@ public class    RegionTickManager {
     public long getSchedulingTime() {
         MinecraftServer server = RelativityTickUtils.getServer();
         ServerWorld world = server == null ? null : server.getWorld(dimension);
-        return world == null ? currentWorldTime : world.getLevelProperties().getTime();
+        if (world == null) return currentWorldTime;
+        //1.21.11 的 WorldAccess.createOrderedTick 改为走 getTime()，该方法已被 WorldAccessTimeMixin 换成区域虚拟时间
+        //（1.21.4 走的是未被拦截的 getLevelProperties().getTime()）。此处必须用同一基准回推 delay，
+        //否则 ChunkTickSchedulerMixin 的换算会多偏移 (虚拟时间 - 真实时间)。
+        Long virtualTime = RegionTimeContext.getTime(world);
+        return virtualTime != null ? virtualTime : world.getLevelProperties().getTime();
     }
 
     public long getSchedulingVirtualTime() {
@@ -438,10 +445,12 @@ public class    RegionTickManager {
     private void tickChunkWorld(ServerWorld world) {
         if (!RelativityTickConfig.isChunkTickEnabled()) return;
         SpawnHelper.Info spawnInfo = ServerTickBridge.getSpawnInfo(world);
+        ServerChunkManagerAccessor managerAccessor = (ServerChunkManagerAccessor) world.getChunkManager();
         boolean doMobSpawning = world.getGameRules().getValue(net.minecraft.world.rule.GameRules.DO_MOB_SPAWNING);
         int randomTickSpeed = world.getGameRules().getValue(net.minecraft.world.rule.GameRules.RANDOM_TICK_SPEED);
+        //MC 1.21.11 原版移除了 spawnAnimals（固定传 true），但 spawnMonsters 仍是逐世界开关，必须沿用真实值
         List<SpawnGroup> spawnGroups = doMobSpawning
-                ? SpawnHelper.collectSpawnableGroups(spawnInfo, true, true, world.getTime() % 400L == 0L)
+                ? SpawnHelper.collectSpawnableGroups(spawnInfo, true, managerAccessor.getSpawnMonsters(), world.getTime() % 400L == 0L)
                 : List.of();
 
         ServerChunkManager chunkManager = world.getChunkManager();
@@ -451,9 +460,16 @@ public class    RegionTickManager {
 
             WorldChunk chunk = chunkManager.getWorldChunk(chunkPos.x, chunkPos.z);
             if (chunk == null) continue;
-            if (!world.shouldTickTestAt(chunkPos)) continue;
+            //1.21.11 的 ServerWorld.shouldTickTestAt 额外附加了 isLoaded 判定；
+            //ServerEntityManager.shouldTick(ChunkPos) 与 1.21.4 的实现完全一致，直接沿用以保持行为不变
+            if (!((ServerWorldEntityAccessor) world).getEntityManager().shouldTick(chunkPos)) continue;
             //区块时间
             chunk.increaseInhabitedTime(1L);
+            //雷暴：1.21.11 已把 thunder 从 ServerWorld.tickChunk 拆分为 tickThunder，
+            //为保持 1.21.4（thunder 在 tickChunk 内、受 shouldTickBlocksInChunk 门控）的行为需在此显式补回
+            if (world.shouldTickBlocksInChunk(chunkPosLong)) {
+                world.tickThunder(chunk);
+            }
             //生物生成
             if (!spawnGroups.isEmpty()
                     && world.getWorldBorder().contains(chunkPos)) {
