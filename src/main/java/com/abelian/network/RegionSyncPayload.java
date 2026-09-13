@@ -7,6 +7,7 @@ import net.minecraft.network.codec.PacketCodec;
 import net.minecraft.network.codec.PacketCodecs;
 import net.minecraft.network.packet.CustomPayload;
 
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -16,6 +17,8 @@ public record RegionSyncPayload(String id, String dimension, Set<Long> chunkPosi
     public Id<? extends CustomPayload> getId() {return ID;}
     private static final PacketCodec<ByteBuf, RegionTickManager.RegionState> STATE_CODEC =
             PacketCodecs.indexed(i -> RegionTickManager.RegionState.values()[i], RegionTickManager.RegionState::ordinal);
+    private static final PacketCodec<ByteBuf, Collection<Long>> CHUNK_POSITIONS_CODEC =
+            PacketCodecs.collection(HashSet::new, PacketCodecs.VAR_LONG);
 
     public RegionSyncPayload(String id, String dimension, Set<Long> chunkPositions, RegionTickManager.RegionState state, double rate, long virtualTime,
                              boolean disableHopperTick, boolean disableEntityTick, boolean disableObserverTick) {
@@ -35,28 +38,24 @@ public record RegionSyncPayload(String id, String dimension, Set<Long> chunkPosi
         return (disableFlags & 4) != 0;
     }
 
-    public static final PacketCodec<ByteBuf, RegionSyncPayload> CODEC = PacketCodec.tuple(
-            PacketCodecs.STRING,
-            RegionSyncPayload::id,
-
-            PacketCodecs.STRING,
-            RegionSyncPayload::dimension,
-
-            PacketCodecs.collection(HashSet::new, PacketCodecs.LONG),
-            RegionSyncPayload::chunkPositions,
-
-            STATE_CODEC,
-            RegionSyncPayload::state,
-
-            PacketCodecs.DOUBLE,
-            RegionSyncPayload::rate,
-
-            PacketCodecs.LONG,
-            RegionSyncPayload::virtualTime,
-
-            PacketCodecs.BYTE,
-            RegionSyncPayload::disableFlags,
-
-            RegionSyncPayload::new
+    //MC 1.21 的 PacketCodec.tuple 最多 6 元，本包有 7 个字段，改为显式编解码
+    public static final PacketCodec<ByteBuf, RegionSyncPayload> CODEC = PacketCodec.of(
+            (payload, buf) -> {
+                PacketCodecs.STRING.encode(buf, payload.id());
+                PacketCodecs.STRING.encode(buf, payload.dimension());
+                CHUNK_POSITIONS_CODEC.encode(buf, payload.chunkPositions());
+                STATE_CODEC.encode(buf, payload.state());
+                PacketCodecs.DOUBLE.encode(buf, payload.rate());
+                PacketCodecs.VAR_LONG.encode(buf, payload.virtualTime());
+                PacketCodecs.BYTE.encode(buf, payload.disableFlags());
+            },
+            buf -> new RegionSyncPayload(
+                    PacketCodecs.STRING.decode(buf),
+                    PacketCodecs.STRING.decode(buf),
+                    new HashSet<>(CHUNK_POSITIONS_CODEC.decode(buf)),
+                    STATE_CODEC.decode(buf),
+                    PacketCodecs.DOUBLE.decode(buf),
+                    PacketCodecs.VAR_LONG.decode(buf),
+                    PacketCodecs.BYTE.decode(buf))
     );
 }

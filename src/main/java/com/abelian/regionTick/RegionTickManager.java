@@ -164,7 +164,7 @@ public class    RegionTickManager {
             chunk.releaseChunk(world.getFluidTickScheduler(), this, world.getTime(), startTime, stepped);
             WorldChunk worldChunk = world.getChunkManager().getWorldChunk(ChunkPos.getPackedX(chunkPos), ChunkPos.getPackedZ(chunkPos));
             if (worldChunk != null) {
-                worldChunk.markNeedsSaving();
+                worldChunk.setNeedsSaving(true);
             }
             return;
         }
@@ -444,14 +444,6 @@ public class    RegionTickManager {
         SpawnHelper.Info spawnInfo = ServerTickBridge.getSpawnInfo(world);
         boolean doMobSpawning = world.getGameRules().getBoolean(net.minecraft.world.GameRules.DO_MOB_SPAWNING);
         int randomTickSpeed = world.getGameRules().getInt(net.minecraft.world.GameRules.RANDOM_TICK_SPEED);
-        List<SpawnGroup> spawnGroups = doMobSpawning
-                ? SpawnHelper.collectSpawnableGroups(
-                        spawnInfo,
-                        managerAccessor.getSpawnAnimals(),
-                        managerAccessor.getSpawnMonsters(),
-                        world.getTime() % 400L == 0L
-                )
-                : List.of();
 
         ServerChunkManager chunkManager = world.getChunkManager();
 
@@ -464,9 +456,11 @@ public class    RegionTickManager {
             //区块时间
             chunk.increaseInhabitedTime(1L);
             //生物生成
-            if (!spawnGroups.isEmpty()
-                    && world.getWorldBorder().contains(chunkPos)) {
-                SpawnHelper.spawn(world, chunk, spawnInfo, spawnGroups);
+            if (doMobSpawning && world.getWorldBorder().contains(chunkPos)) {
+                SpawnHelper.spawn(world, chunk, spawnInfo,
+                        managerAccessor.getSpawnAnimals(),
+                        managerAccessor.getSpawnMonsters(),
+                        world.getTime() % 400L == 0L);
             }
             //random tick
             if (world.shouldTickBlocksInChunk(chunkPosLong)) {

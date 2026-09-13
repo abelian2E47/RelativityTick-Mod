@@ -5,26 +5,24 @@ import com.abelian.client.clientRegionTick.ClientRegionManager;
 import com.abelian.client.config.RelativityTickClientConfig;
 import com.abelian.client.render.EntityInterpolationManager;
 import com.abelian.client.render.RegionTickDeltaManager;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.Camera;
+import net.minecraft.client.render.WorldRenderer;
 import net.minecraft.client.world.ClientWorld;
-import net.minecraft.client.render.entity.EntityRenderDispatcher;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.util.math.ChunkPos;
 import net.minecraft.util.math.Vec3d;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyArgs;
 import org.spongepowered.asm.mixin.injection.invoke.arg.Args;
 
-@Mixin(EntityRenderDispatcher.class)
-public class EntityRenderDispatcherMixin {
+@Mixin(WorldRenderer.class)
+public class WorldRendererMixin {
 
-    @Shadow public Camera camera;
-
-    @ModifyArgs(method = "render(Lnet/minecraft/entity/Entity;DDDFLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/render/entity/EntityRenderDispatcher;render(Lnet/minecraft/entity/Entity;DDDFLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;ILnet/minecraft/client/render/entity/EntityRenderer;)V"))
+    @ModifyArgs(method = "renderEntity(Lnet/minecraft/entity/Entity;DDDFLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/render/entity/EntityRenderDispatcher;render(Lnet/minecraft/entity/Entity;DDDFFLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V"))
     private void adjustPosition(Args args) {
         Entity entity = args.get(0);
         if (entity instanceof PlayerEntity) return;
@@ -36,14 +34,16 @@ public class EntityRenderDispatcherMixin {
         ClientRegion region = regionAnchor.getWorld() instanceof ClientWorld world ? ClientRegionManager.getRegion(world, entityChunkPos) : null;
         if (region == null || !region.isControlled()) return;
 
+        Camera camera = MinecraftClient.getInstance().gameRenderer.getCamera();
+        Vec3d camPos = camera.getPos();
+
         //关闭插值时渲染实体在当前tick的服务端坐标
         if (!RelativityTickClientConfig.isEntityRenderInterpolationEnabled()) {
-            Vec3d camPos = this.camera.getPos();
             Vec3d exactPos = entity.getPos();
             args.set(1, exactPos.x - camPos.x);
             args.set(2, exactPos.y - camPos.y);
             args.set(3, exactPos.z - camPos.z);
-            args.set(4, 1.0f);
+            args.set(5, 1.0f);
             return;
         }
 
@@ -52,9 +52,8 @@ public class EntityRenderDispatcherMixin {
         if (anchorInterpolation == null) return;
 
         float tickDelta = RegionTickDeltaManager.getTickDelta(regionID);
-        args.set(4, tickDelta);
+        args.set(5, tickDelta);
 
-        Vec3d camPos = this.camera.getPos();
         Vec3d worldRenderPos = isPassenger
                 ? getPassengerRenderPos(entity, vehicle, anchorInterpolation, tickDelta)
                 : EntityInterpolationManager.interpolate(anchorInterpolation, tickDelta);

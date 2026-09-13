@@ -7,7 +7,6 @@
     "EntityListMixin",
     "BlockEntityMixin",
     "EntityMixin",
-    "ServerChunkLoadingManagerAccessor",
     "ServerChunkManagerAccessor",
     "ServerChunkManagerInhabitedTimeMixin",
     "ServerEntityManagerAccessor",

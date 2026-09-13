@@ -7,19 +7,17 @@ import net.minecraft.server.world.ServerWorld;
 import net.minecraft.world.chunk.WorldChunk;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-
-import java.util.List;
+import org.spongepowered.asm.mixin.injection.Redirect;
 
 @Mixin(ServerChunkManager.class)
 public abstract class ServerChunkManagerInhabitedTimeMixin {
-    @Inject(method = "tickChunks(Lnet/minecraft/util/profiler/Profiler;JLjava/util/List;)V", at = @At("HEAD"))
-    private void skipControlledChunks(net.minecraft.util.profiler.Profiler profiler, long timeDelta, List<WorldChunk> chunks, CallbackInfo ci) {
-        chunks.removeIf(chunk -> {
-            if (!(chunk.getWorld() instanceof ServerWorld world)) return false;
+    //MC 1.21 的 tickChunks 无区块列表形参，改为拦下每区块的居住时间累加；受控区块的生成与随机刻分别由 SpawnHelperMixin 与 ServerWorldMixin 拦下
+    @Redirect(method = "tickChunks", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/chunk/WorldChunk;increaseInhabitedTime(J)V"))
+    private void skipControlledInhabitedTime(WorldChunk chunk, long delta) {
+        if (chunk.getWorld() instanceof ServerWorld world) {
             RegionTickManager region = RegionsManager.getRegionByChunk(world, chunk.getPos().toLong());
-            return region != null && region.isControlled();
-        });
+            if (region != null && region.isControlled()) return;
+        }
+        chunk.increaseInhabitedTime(delta);
     }
 }

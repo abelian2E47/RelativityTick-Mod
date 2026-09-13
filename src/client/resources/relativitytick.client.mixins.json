@@ -9,7 +9,7 @@
     "ClientWorldAccessor",
     "ClientWorldMixin",
     "DebugRendererMixin",
-    "EntityRenderDispatcherMixin"
+    "WorldRendererMixin"
   ],
   "injectors": {
     "defaultRequire": 1

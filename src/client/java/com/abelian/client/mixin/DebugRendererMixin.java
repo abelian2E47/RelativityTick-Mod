@@ -35,7 +35,6 @@ public abstract class DebugRendererMixin {
     @Inject(method = "render", at = @At("TAIL"))
     private void renderRegionOverlay(
             MatrixStack matrices,
-            Frustum frustum,
             VertexConsumerProvider.Immediate vertexConsumers,
             double cameraX, double cameraY, double cameraZ,
             CallbackInfo ci) {
