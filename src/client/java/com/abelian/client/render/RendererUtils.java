@@ -7,37 +7,18 @@ import net.minecraft.client.render.*;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
-import net.minecraft.util.Util;
 import net.minecraft.util.math.ChunkPos;
 import net.minecraft.util.math.RotationAxis;
 import net.minecraft.util.math.Vec3d;
 import org.joml.Matrix4f;
 
 import java.util.List;
-import java.util.OptionalDouble;
 import java.util.Set;
-import java.util.function.Function;
 
 public class RendererUtils {
-    //区域线框渲染层：LINES 模式 + 可配置线宽（宽度为屏幕像素，与视角无关）
-    private static final Function<Double, RenderLayer> REGION_LINES_LAYER = Util.memoize(width -> RenderLayer.of(
-            "region_lines",
-            VertexFormats.LINES,
-            VertexFormat.DrawMode.LINES,
-            1536,
-            RenderLayer.MultiPhaseParameters.builder()
-                    .program(RenderPhase.LINES_PROGRAM)
-                    .lineWidth(new RenderPhase.LineWidth(OptionalDouble.of(width)))
-                    .layering(RenderPhase.VIEW_OFFSET_Z_LAYERING)
-                    .transparency(RenderPhase.TRANSLUCENT_TRANSPARENCY)
-                    .target(RenderPhase.ITEM_ENTITY_TARGET)
-                    .writeMaskState(RenderPhase.ALL_MASK)
-                    .cull(RenderPhase.DISABLE_CULLING)
-                    .build(false)
-    ));
-
+    //区域线框渲染层：1.21.8 起 RenderLayer.of 为包私有、RenderPhase.LineWidth 为 protected，无法自建带线宽的 LINES 层，改用公开的调试线段层（线宽由此参数决定）
     public static RenderLayer getRegionLinesLayer(double width) {
-        return REGION_LINES_LAYER.apply(width);
+        return RenderLayer.getDebugLineStrip(width);
     }
     public static void renderTexts(List<MutableText> infoTexts, Vec3d worldPos, float height, MatrixStack matrices, VertexConsumerProvider vertexConsumer) {
         if (infoTexts.isEmpty()) return;
