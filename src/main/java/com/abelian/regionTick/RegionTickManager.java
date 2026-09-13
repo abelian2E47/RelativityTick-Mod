@@ -346,45 +346,69 @@ public class    RegionTickManager {
             }
         }
 
-        int executedTicks = 0;
         //[修改点3] 收集阶段：按原版 WorldTickScheduler 的批语义，先把本步到期的计划刻全部 poll 出队列，再统一执行。
         //原版 tick() 是 collectTickableTicks 先把整批到期 tick 移出队列、之后才逐条执行，所以执行期间这些
         //tick 的 isQueued=false；ObserverBlock 的 getStateForNeighborUpdate/onBlockAdded/onStateReplaced 都用
         //isQueued 决定是否补排 +2 计划刻。就地 poll 立刻执行会让 isQueued 仍为 true 而漏排，
         //实测：活塞推脸对脸侦测器时钟在区域内退化成 6gt（原版/非受控为 4gt）。
-        List<OrderedTick<T>> dueTicks = new ArrayList<>();
-        while (!tickableSchedulers.isEmpty() && dueTicks.size() < MAX_TICKS_EXECUTED_PER_STEP) {
-            ChunkTickScheduler<T> scheduler = tickableSchedulers.poll();
-            OrderedTick<T> tick = scheduler.pollNextTick();
-            if (tick == null) continue;
+        //[修改点4] 这一批必须落在原版 WorldTickScheduler.tickableTicks 上（而不是本地 List）。
+        //isTicking(pos,type) 只查 tickableTicks / copiedTickableTicksList，红石元件
+        //（AbstractRedstoneGateBlock.updatePowered、ComparatorBlock、RedstoneTorchBlock）用它判断
+        //"该位置的计划刻已经在本批里了，别再排一个"。用本地 List 收集会让 isTicking 恒为 false，
+        //导致同批内被邻居更新的元件多排一个 +2 计划刻，元件提前 2gt 动作。
+        //实测：四格一档中继器链撤源后末端两个同时熄灭（原版是依次熄灭）。
+        Queue<OrderedTick<T>> dueTicks = worldAccess.getTickableTicks();
+        List<OrderedTick<T>> tickedTicks = worldAccess.getTickedTicks();
+        Set<OrderedTick<?>> inFlightTicks = worldAccess.getCopiedTickableTicksList();
+        dueTicks.clear();
+        tickedTicks.clear();
+        inFlightTicks.clear();
 
-            dueTicks.add(tick);
+        int executedTicks = 0;
+        try {
+            while (!tickableSchedulers.isEmpty() && dueTicks.size() < MAX_TICKS_EXECUTED_PER_STEP) {
+                ChunkTickScheduler<T> scheduler = tickableSchedulers.poll();
+                OrderedTick<T> tick = scheduler.pollNextTick();
+                if (tick == null) continue;
 
-            OrderedTick<T> competingTick = peekNextTick(tickableSchedulers);
-            while (dueTicks.size() < MAX_TICKS_EXECUTED_PER_STEP) {
-                OrderedTick<T> nextTick = scheduler.peekNextTick();
-                if (nextTick == null || nextTick.triggerTick() > virtualTrigger
-                        || competingTick != null
-                        && OrderedTick.TRIGGER_TICK_COMPARATOR.compare(nextTick, competingTick) > 0) {
-                    break;
+                dueTicks.add(tick);
+
+                OrderedTick<T> competingTick = peekNextTick(tickableSchedulers);
+                while (dueTicks.size() < MAX_TICKS_EXECUTED_PER_STEP) {
+                    OrderedTick<T> nextTick = scheduler.peekNextTick();
+                    if (nextTick == null || nextTick.triggerTick() > virtualTrigger
+                            || competingTick != null
+                            && OrderedTick.TRIGGER_TICK_COMPARATOR.compare(nextTick, competingTick) > 0) {
+                        break;
+                    }
+
+                    OrderedTick<T> collected = scheduler.pollNextTick();
+                    if (collected == null) break;
+                    dueTicks.add(collected);
                 }
 
-                OrderedTick<T> collected = scheduler.pollNextTick();
-                if (collected == null) break;
-                dueTicks.add(collected);
+                OrderedTick<T> nextTick = scheduler.peekNextTick();
+                if (nextTick != null && nextTick.triggerTick() <= virtualTrigger) {
+                    tickableSchedulers.add(scheduler);
+                }
             }
 
-            OrderedTick<T> nextTick = scheduler.peekNextTick();
-            if (nextTick != null && nextTick.triggerTick() <= virtualTrigger) {
-                tickableSchedulers.add(scheduler);
+            //执行阶段：此时本步到期的 tick 已全部离开区块队列，isQueued 语义与原版一致；
+            //逐条 poll 出 tickableTicks 并同步剔除 copiedTickableTicksList，isTicking 语义也与原版一致；
+            //执行期间新排的计划刻不在本批内，留到下一步，与原版"新 tick 不在本刻批里"一致。
+            while (!dueTicks.isEmpty()) {
+                OrderedTick<T> executed = dueTicks.poll();
+                if (!inFlightTicks.isEmpty()) {
+                    inFlightTicks.remove(executed);
+                }
+                tickedTicks.add(executed);
+                ticker.accept(executed.pos(), executed.type());
+                executedTicks++;
             }
-        }
-
-        //执行阶段：此时本步到期的 tick 已全部离开队列，isQueued 语义与原版一致；
-        //执行期间新排的计划刻不在本批内，留到下一步，与原版"新 tick 不在本刻批里"一致。
-        for (OrderedTick<T> executed : dueTicks) {
-            ticker.accept(executed.pos(), executed.type());
-            executedTicks++;
+        } finally {
+            dueTicks.clear();
+            tickedTicks.clear();
+            inFlightTicks.clear();
         }
 
         return executedTicks;
