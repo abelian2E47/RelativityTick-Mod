@@ -27,6 +27,8 @@ import java.util.List;
 import java.util.Map;
 
 import static com.abelian.client.render.RendererUtils.renderChunkLines;
+import static com.abelian.client.render.RendererUtils.renderChunkFaces;
+import static com.abelian.client.render.RendererUtils.renderChunkOutline;
 import static com.abelian.client.render.RendererUtils.renderTexts;
 import static com.abelian.client.RelativityTickClient.selectChunks;
 
@@ -45,12 +47,19 @@ public abstract class DebugRendererMixin {
 
         //区域边界框
         if (!selectChunks.isEmpty() || !ClientRegionManager.getRegions().isEmpty()) {
-            RenderLayer regionLinesLayer = RendererUtils.getRegionLinesLayer(RelativityTickClientConfig.getRegionLineWidth());
-            VertexConsumer lineConsumer = vertexConsumers.getBuffer(regionLinesLayer);
+            boolean renderFaces = RelativityTickClientConfig.isRegionFaceRenderingEnabled();
+            RenderLayer regionLayer = renderFaces
+                    ? RendererUtils.getRegionFacesLayer()
+                    : RendererUtils.getRegionLinesLayer(RelativityTickClientConfig.getRegionLineWidth());
+            VertexConsumer regionConsumer = vertexConsumers.getBuffer(regionLayer);
             if (!selectChunks.isEmpty()) {
                 float r1 = 1.0F, g1 = 0.5F, b1 = 0.0F;
                 for (long posLong : selectChunks) {
-                    renderChunkLines(overlayMatrices, lineConsumer, posLong, -64, 320, r1, g1, b1, selectChunks);
+                    if (renderFaces) {
+                        renderChunkFaces(overlayMatrices, regionConsumer, posLong, -64, 320, r1, g1, b1, selectChunks);
+                    } else {
+                        renderChunkLines(overlayMatrices, regionConsumer, posLong, -64, 320, r1, g1, b1, selectChunks);
+                    }
                 }
             }
 
@@ -58,7 +67,12 @@ public abstract class DebugRendererMixin {
                 if (region.getChunkPositions() == null || region.getDimension().isEmpty()) continue;
 
                 float r2, g2, b2;
-                if (region.isRunning()) {
+                if (region.isSprinting()) {
+                    //橙红
+                    r2 = 0.9f;
+                    g2 = 0.3f;
+                    b2 = 0.1f;
+                } else if (region.isRunning()) {
                     //紫色
                     r2 = 0.8f;
                     g2 = 0.2f;
@@ -76,11 +90,53 @@ public abstract class DebugRendererMixin {
                 }
 
                 for (long posLong : region.getChunkPositions()) {
-                    renderChunkLines(overlayMatrices, lineConsumer, posLong, -64, 320, r2, g2, b2, region.getChunkPositions());
+                    if (renderFaces) {
+                        renderChunkFaces(overlayMatrices, regionConsumer, posLong, -64, 320, r2, g2, b2, region.getChunkPositions());
+                    } else {
+                        renderChunkLines(overlayMatrices, regionConsumer, posLong, -64, 320, r2, g2, b2, region.getChunkPositions());
+                    }
                 }
             }
-            vertexConsumers.draw(regionLinesLayer);
-        }
+            vertexConsumers.draw(regionLayer);
+            if (renderFaces) {
+                RenderLayer outlineLayer = RendererUtils.getRegionLinesLayer(RelativityTickClientConfig.getRegionLineWidth());
+                VertexConsumer outlineConsumer = vertexConsumers.getBuffer(outlineLayer);
+                if (!selectChunks.isEmpty()) {
+                    float r1 = 1.0F, g1 = 0.5F, b1 = 0.0F;
+                    for (long posLong : selectChunks) {
+                        renderChunkOutline(overlayMatrices, outlineConsumer, posLong, -64, 320, r1, g1, b1, selectChunks);
+                    }
+                }
+
+                for (ClientRegion region : ClientRegionManager.getRegions()) {
+                    if (region.getChunkPositions() == null || region.getDimension().isEmpty()) continue;
+
+                    float r2, g2, b2;
+                    if (region.isSprinting()) {
+                        r2 = 0.9f;
+                        g2 = 0.3f;
+                        b2 = 0.1f;
+                    } else if (region.isRunning()) {
+                        r2 = 0.8f;
+                        g2 = 0.2f;
+                        b2 = 1.0f;
+                    } else if (region.isControlled()) {
+                        r2 = 0.0f;
+                        g2 = 0.5f;
+                        b2 = 1.0f;
+                    } else {
+                        r2 = 0.0f;
+                        g2 = 1.0f;
+                        b2 = 0.0f;
+                    }
+
+                    for (long posLong : region.getChunkPositions()) {
+                        renderChunkOutline(overlayMatrices, outlineConsumer, posLong, -64, 320, r2, g2, b2, region.getChunkPositions());
+                    }
+                }
+                vertexConsumers.draw(outlineLayer);
+            }
+         }
 
         List<ScheduledTickDisplay> displays = RelativityTickClientConfig.isRenderScheduledTicksEnabled()
                 ? ClientScheduledTickManager.getDisplayData()

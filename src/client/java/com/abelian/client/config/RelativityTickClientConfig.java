@@ -19,6 +19,7 @@ public final class RelativityTickClientConfig {
     public static final boolean DEFAULT_RENDER_SCHEDULED_TICKS = true;
     public static final double DEFAULT_SCHEDULED_TICK_TEXT_SCALE = 0.03;
     public static final double DEFAULT_REGION_LINE_WIDTH = 2.5;
+    public static final String DEFAULT_REGION_RENDER_MODE = "lines";
     public static final boolean DEFAULT_ENTITY_RENDER_INTERPOLATION = true;
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -27,6 +28,7 @@ public final class RelativityTickClientConfig {
     private static boolean renderScheduledTicks = DEFAULT_RENDER_SCHEDULED_TICKS;
     private static double scheduledTickTextScale = DEFAULT_SCHEDULED_TICK_TEXT_SCALE;
     private static double regionLineWidth = DEFAULT_REGION_LINE_WIDTH;
+    private static String regionRenderMode = DEFAULT_REGION_RENDER_MODE;
     private static boolean entityRenderInterpolation = DEFAULT_ENTITY_RENDER_INTERPOLATION;
 
     private RelativityTickClientConfig() {
@@ -44,11 +46,12 @@ public final class RelativityTickClientConfig {
             if (!parsed.isJsonObject()) {
                 throw new JsonParseException("The root value must be a JSON object");
             }
-
             JsonObject root = parsed.getAsJsonObject();
+
             renderScheduledTicks = readBoolean(root, "renderScheduledTicks", DEFAULT_RENDER_SCHEDULED_TICKS);
             scheduledTickTextScale = readNumber(root, "scheduledTickTextScale", DEFAULT_SCHEDULED_TICK_TEXT_SCALE);
             regionLineWidth = readNumber(root, "regionLineWidth", DEFAULT_REGION_LINE_WIDTH);
+            regionRenderMode = readRenderMode(root, "regionRenderMode", DEFAULT_REGION_RENDER_MODE);
             entityRenderInterpolation = readBoolean(root, "entityRenderInterpolation", DEFAULT_ENTITY_RENDER_INTERPOLATION);
             writeConfig();
         } catch (IOException | RuntimeException e) {
@@ -84,6 +87,19 @@ public final class RelativityTickClientConfig {
         writeConfig();
     }
 
+    public static String getRegionRenderMode() {
+        return regionRenderMode;
+    }
+
+    public static boolean isRegionFaceRenderingEnabled() {
+        return "faces".equals(regionRenderMode);
+    }
+
+    public static void setRegionRenderMode(String value) throws IOException {
+        regionRenderMode = normalizeRenderMode(value);
+        writeConfig();
+    }
+
     public static boolean isEntityRenderInterpolationEnabled() {
         return entityRenderInterpolation;
     }
@@ -97,6 +113,7 @@ public final class RelativityTickClientConfig {
         renderScheduledTicks = DEFAULT_RENDER_SCHEDULED_TICKS;
         scheduledTickTextScale = DEFAULT_SCHEDULED_TICK_TEXT_SCALE;
         regionLineWidth = DEFAULT_REGION_LINE_WIDTH;
+        regionRenderMode = DEFAULT_REGION_RENDER_MODE;
         entityRenderInterpolation = DEFAULT_ENTITY_RENDER_INTERPOLATION;
     }
 
@@ -117,6 +134,18 @@ public final class RelativityTickClientConfig {
         }
         return element.getAsBoolean();
     }
+    private static String readRenderMode(JsonObject object, String key, String defaultValue) {
+        JsonElement element = object.get(key);
+        if (element == null) return defaultValue;
+        if (!element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString()) {
+            throw new JsonParseException(key + " must be a string");
+        }
+        return normalizeRenderMode(element.getAsString());
+    }
+
+    private static String normalizeRenderMode(String value) {
+        return "faces".equalsIgnoreCase(value) ? "faces" : DEFAULT_REGION_RENDER_MODE;
+    }
 
     private static void saveDefaultConfig() {
         try {
@@ -132,6 +161,7 @@ public final class RelativityTickClientConfig {
             root.addProperty("renderScheduledTicks", renderScheduledTicks);
             root.addProperty("scheduledTickTextScale", scheduledTickTextScale);
             root.addProperty("regionLineWidth", regionLineWidth);
+            root.addProperty("regionRenderMode", regionRenderMode);
             root.addProperty("entityRenderInterpolation", entityRenderInterpolation);
             GSON.toJson(root, writer);
         }

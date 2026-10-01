@@ -35,6 +35,97 @@ public class RendererUtils {
                     .cull(RenderPhase.DISABLE_CULLING)
                     .build(false)
     ));
+    //区域面框渲染层：POSITION_COLOR + TRIANGLES，半透明且不写深度，避免遮挡世界内容
+    private static final RenderLayer REGION_FACES_LAYER = RenderLayer.of(
+            "region_faces",
+            VertexFormats.POSITION_COLOR,
+            VertexFormat.DrawMode.TRIANGLES,
+            4096,
+            RenderLayer.MultiPhaseParameters.builder()
+                    .program(RenderPhase.POSITION_COLOR_PROGRAM)
+                    .layering(RenderPhase.VIEW_OFFSET_Z_LAYERING)
+                    .transparency(RenderPhase.TRANSLUCENT_TRANSPARENCY)
+                    .target(RenderPhase.ITEM_ENTITY_TARGET)
+                    .writeMaskState(RenderPhase.COLOR_MASK)
+                    .cull(RenderPhase.DISABLE_CULLING)
+                    .build(false)
+    );
+
+    public static RenderLayer getRegionFacesLayer() {
+        return REGION_FACES_LAYER;
+    }
+
+    public static void renderChunkFaces(MatrixStack matrices, VertexConsumer faceConsumer, long currentPos,
+                                        float minY, float maxY, float r, float g, float b, Set<Long> chunks) {
+        Matrix4f matrix = matrices.peek().getPositionMatrix();
+        int chunkX = ChunkPos.getPackedX(currentPos);
+        int chunkZ = ChunkPos.getPackedZ(currentPos);
+        float x = chunkX << 4;
+        float z = chunkZ << 4;
+
+        boolean hasNorth = chunks.contains(ChunkPos.toLong(chunkX, chunkZ - 1));
+        boolean hasSouth = chunks.contains(ChunkPos.toLong(chunkX, chunkZ + 1));
+        boolean hasWest = chunks.contains(ChunkPos.toLong(chunkX - 1, chunkZ));
+        boolean hasEast = chunks.contains(ChunkPos.toLong(chunkX + 1, chunkZ));
+
+        if (!hasNorth) drawQuad(matrix, faceConsumer, x, minY, z, x + 16, minY, z, x + 16, maxY, z, x, maxY, z, r, g, b);
+        if (!hasSouth) drawQuad(matrix, faceConsumer, x + 16, minY, z + 16, x, minY, z + 16, x, maxY, z + 16, x + 16, maxY, z + 16, r, g, b);
+        if (!hasWest) drawQuad(matrix, faceConsumer, x, minY, z + 16, x, minY, z, x, maxY, z, x, maxY, z + 16, r, g, b);
+        if (!hasEast) drawQuad(matrix, faceConsumer, x + 16, minY, z, x + 16, minY, z + 16, x + 16, maxY, z + 16, x + 16, maxY, z, r, g, b);
+
+        //上下盖面按区块绘制；相邻区块会自然拼接成连续面，不产生内部侧壁。
+        drawQuad(matrix, faceConsumer, x, minY, z, x, minY, z + 16, x + 16, minY, z + 16, x + 16, minY, z, r, g, b);
+        drawQuad(matrix, faceConsumer, x, maxY, z + 16, x, maxY, z, x + 16, maxY, z, x + 16, maxY, z + 16, r, g, b);
+    }
+    public static void renderChunkOutline(MatrixStack matrices, VertexConsumer lineConsumer, long currentPos,
+                                          float minY, float maxY, float r, float g, float b, Set<Long> chunks) {
+        Matrix4f matrix = matrices.peek().getPositionMatrix();
+        int chunkX = ChunkPos.getPackedX(currentPos);
+        int chunkZ = ChunkPos.getPackedZ(currentPos);
+        float x = chunkX << 4;
+        float z = chunkZ << 4;
+
+        boolean hasNorth = chunks.contains(ChunkPos.toLong(chunkX, chunkZ - 1));
+        boolean hasSouth = chunks.contains(ChunkPos.toLong(chunkX, chunkZ + 1));
+        boolean hasWest = chunks.contains(ChunkPos.toLong(chunkX - 1, chunkZ));
+        boolean hasEast = chunks.contains(ChunkPos.toLong(chunkX + 1, chunkZ));
+
+        if (!hasNorth) {
+            drawLine(matrix, lineConsumer, x, minY, z, x + 16, minY, z, r, g, b);
+            drawLine(matrix, lineConsumer, x, maxY, z, x + 16, maxY, z, r, g, b);
+        }
+        if (!hasSouth) {
+            drawLine(matrix, lineConsumer, x + 16, minY, z + 16, x, minY, z + 16, r, g, b);
+            drawLine(matrix, lineConsumer, x + 16, maxY, z + 16, x, maxY, z + 16, r, g, b);
+        }
+        if (!hasWest) {
+            drawLine(matrix, lineConsumer, x, minY, z + 16, x, minY, z, r, g, b);
+            drawLine(matrix, lineConsumer, x, maxY, z + 16, x, maxY, z, r, g, b);
+        }
+        if (!hasEast) {
+            drawLine(matrix, lineConsumer, x + 16, minY, z, x + 16, minY, z + 16, r, g, b);
+            drawLine(matrix, lineConsumer, x + 16, maxY, z, x + 16, maxY, z + 16, r, g, b);
+        }
+
+        drawVerticalIfNecessary(matrix, lineConsumer, x, z, minY, maxY, r, g, b, hasWest, hasNorth);
+        drawVerticalIfNecessary(matrix, lineConsumer, x + 16, z, minY, maxY, r, g, b, hasEast, hasNorth);
+        drawVerticalIfNecessary(matrix, lineConsumer, x, z + 16, minY, maxY, r, g, b, hasWest, hasSouth);
+        drawVerticalIfNecessary(matrix, lineConsumer, x + 16, z + 16, minY, maxY, r, g, b, hasEast, hasSouth);
+    }
+
+
+    private static void drawQuad(Matrix4f matrix, VertexConsumer consumer,
+                                 float x1, float y1, float z1, float x2, float y2, float z2,
+                                 float x3, float y3, float z3, float x4, float y4, float z4,
+                                 float r, float g, float b) {
+        consumer.vertex(matrix, x1, y1, z1).color(r, g, b, 0.18F);
+        consumer.vertex(matrix, x2, y2, z2).color(r, g, b, 0.18F);
+        consumer.vertex(matrix, x3, y3, z3).color(r, g, b, 0.18F);
+        consumer.vertex(matrix, x1, y1, z1).color(r, g, b, 0.18F);
+        consumer.vertex(matrix, x3, y3, z3).color(r, g, b, 0.18F);
+        consumer.vertex(matrix, x4, y4, z4).color(r, g, b, 0.18F);
+    }
+
 
     public static RenderLayer getRegionLinesLayer(double width) {
         return REGION_LINES_LAYER.apply(width);

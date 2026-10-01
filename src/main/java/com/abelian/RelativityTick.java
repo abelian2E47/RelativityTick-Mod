@@ -4,6 +4,7 @@ import com.abelian.config.RelativityTickConfig;
 import com.abelian.network.*;
 import com.abelian.regionTick.RegionTickManager;
 import com.abelian.regionTick.RegionBlockEventProcessor;
+import com.abelian.regionTick.RegionDashRunner;
 import com.abelian.regionTick.RegionsManager;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
@@ -18,6 +19,8 @@ import net.minecraft.fluid.Fluid;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.world.ServerWorld;
+import net.minecraft.text.Text;
+import net.minecraft.util.Formatting;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.tick.WorldTickScheduler;
@@ -41,9 +44,9 @@ public class RelativityTick implements ModInitializer {
     public static final Identifier SCHEDULED_TICK_DATA_PAYLOAD = Identifier.of(MOD_ID, "scheduled_tick_data_payload");
 
     private static final double REGION_TPS_RELATIVE_SEND_THRESHOLD = 0.01;
-    private static final int REGION_TPS_STABLE_SEND_GT = 20;
+    private static final long REGION_TPS_STABLE_SEND_NANOS = 1_000_000_000L;
     private static final Map<String, Double> LAST_SENT_REGION_TPS = new HashMap<>();
-    private static final Map<String, Integer> REGION_TPS_SEND_CANDIDATE_TICKS = new HashMap<>();
+    private static final Map<String, Long> REGION_TPS_SEND_CANDIDATE_SINCE = new HashMap<>();
 
     private static final int REGION_ENTITY_SYNC_INTERVAL_REGION_TICKS = 20;
     private static final Map<String, Integer> REGION_ENTITY_SYNC_LAST_STEPPED = new HashMap<>();
@@ -74,7 +77,7 @@ public class RelativityTick implements ModInitializer {
             RegionsManager.clear();
             RelativityTickUtils.clear();
             LAST_SENT_REGION_TPS.clear();
-            REGION_TPS_SEND_CANDIDATE_TICKS.clear();
+            REGION_TPS_SEND_CANDIDATE_SINCE.clear();
             REGION_ENTITY_SYNC_LAST_STEPPED.clear();
             RegionBlockEventProcessor.clear();
         });
@@ -151,28 +154,79 @@ public class RelativityTick implements ModInitializer {
                 RegionRunResult result = runRegionTicks(server, region, world, Integer.MAX_VALUE, true);
                 if (result.stepsTaken() > 0) {
                     region.recordTickDuration(result.durationNano());
-                } else {
-                    region.recordTickDuration(0L);
                 }
-                region.recordGlobalTickSteps(result.stepsTaken());
                 if (result.stepsTaken() > 0) {
                     sendRegionTime(id, region, world);
                 }
             }
         });
 
+        //dash 剩余步数与 sprint：同一套 dash 原语（每 gt 按预算跑满）。
+        //dash 命令被预算截断后剩下的步数放在 pendingDashSteps，这里每 gt 继续跑满直到跑完；
+        //sprint 则每 gt 都跑满，有界冲刺的 gt 数用完就恢复冲刺前的状态。
+        //这一批里可能还有别的区域在 tick，所以不能声明"单区域批"（见 ServerTickBridge.claimEntity）。
         ServerTickEvents.END_SERVER_TICK.register(server -> {
+            for (String id : RegionsManager.getRegionIdsInOrder()) {
+                RegionTickManager region = RegionsManager.getRegion(id);
+                if (!region.isControlled()) continue;
+
+                boolean sprinting = region.isSprinting();
+                int carrySteps = region.getPendingDashSteps();
+                if (!sprinting && carrySteps <= 0) continue;
+
+                ServerWorld world = server.getWorld(region.getDimension());
+                if (world == null) continue;
+
+                RegionDashRunner.DashResult result = RegionDashRunner.runDash(server, region, world,
+                        sprinting ? Integer.MAX_VALUE : carrySteps, false);
+
+                if (result.stepsTaken() > 0) {
+                    region.recordTickDuration(result.durationNano());
+                }
+                if (!sprinting) {
+                    region.setPendingDashSteps(result.remainingSteps());
+                }
+
+                if (result.stepsTaken() > 0) {
+                    sendRegionTime(id, region, world);
+                    sendRegionEntityStates(id, region, world);
+                }
+
+                if (sprinting && region.consumeSprintGt()) {
+                    region.stopSprint();
+                    sendRegionStateSync(id, region, world);
+                    server.getCommandSource().sendFeedback(() -> Text.translatable(
+                            "relativitytick.command.region.sprint_finished",
+                            Text.literal(id).formatted(Formatting.AQUA)), true);
+                }
+            }
+        });
+
+        //TPS 统计：所有推进路径都只是让 stepped 增长，所以统一在这里按 gt 采一次 stepped 增量，
+        //以后新增推进路径也不会漏（没推进的 gt 记 0，读数自然衰减）。必须排在所有推进 handler 之后。
+        ServerTickEvents.END_SERVER_TICK.register(server -> {
+            long nowNano = System.nanoTime();
+            for (String id : RegionsManager.getRegionIdsInOrder()) {
+                RegionTickManager region = RegionsManager.getRegion(id);
+                if (!region.isControlled()) continue;
+
+                region.sampleStepRate(region.getStepped(), nowNano);
+            }
+        });
+
+        ServerTickEvents.END_SERVER_TICK.register(server -> {
+            long nowNano = System.nanoTime();
             for (String id : RegionsManager.getRegionIdsInOrder()) {
                 RegionTickManager region = RegionsManager.getRegion(id);
                 ServerWorld world = server.getWorld(region.getDimension());
                 if (world == null || !region.isControlled()) continue;
 
                 double currentTPS = region.getTPS();
-                if (!shouldSendRegionTps(id, region, currentTPS)) continue;
+                if (!shouldSendRegionTps(id, region, currentTPS, nowNano)) continue;
 
                 sendRegionTpsAndEntities(id, region, world, currentTPS);
                 LAST_SENT_REGION_TPS.put(id, currentTPS);
-                REGION_TPS_SEND_CANDIDATE_TICKS.remove(id);
+                REGION_TPS_SEND_CANDIDATE_SINCE.remove(id);
             }
         });
 
@@ -202,21 +256,25 @@ public class RelativityTick implements ModInitializer {
         });
 	}
 
-    private static boolean shouldSendRegionTps(String id, RegionTickManager region, double currentTPS) {
+    private static boolean shouldSendRegionTps(String id, RegionTickManager region, double currentTPS, long nowNano) {
         Double lastTPS = LAST_SENT_REGION_TPS.get(id);
+        //首次同步或速率/时间线刚重置时，必须等一个完整真实窗口，且丢弃旧发送基线。
+        if (!region.isStepRateSampleReady()) {
+            LAST_SENT_REGION_TPS.remove(id);
+            REGION_TPS_SEND_CANDIDATE_SINCE.remove(id);
+            return false;
+        }
         if (lastTPS == null) return true;
-        if (!region.hasFullTpsSampleWindow()) return false;
 
         double denominator = Math.max(Math.abs(lastTPS), 1.0);
         double relativeDiff = Math.abs(currentTPS - lastTPS) / denominator;
         if (relativeDiff < REGION_TPS_RELATIVE_SEND_THRESHOLD) {
-            REGION_TPS_SEND_CANDIDATE_TICKS.remove(id);
+            REGION_TPS_SEND_CANDIDATE_SINCE.remove(id);
             return false;
         }
 
-        int candidateTicks = REGION_TPS_SEND_CANDIDATE_TICKS.getOrDefault(id, 0) + 1;
-        REGION_TPS_SEND_CANDIDATE_TICKS.put(id, candidateTicks);
-        return candidateTicks >= REGION_TPS_STABLE_SEND_GT;
+        long candidateSince = REGION_TPS_SEND_CANDIDATE_SINCE.computeIfAbsent(id, ignored -> nowNano);
+        return nowNano - candidateSince >= REGION_TPS_STABLE_SEND_NANOS;
     }
 
     private static void sendRegionTpsAndEntities(String id, RegionTickManager region, ServerWorld world, double currentTPS) {
@@ -230,6 +288,25 @@ public class RelativityTick implements ModInitializer {
 
     private static void sendRegionTime(String id, RegionTickManager region, ServerWorld world) {
         RegionTimePayload payload = new RegionTimePayload(id, region.getVirtualTime());
+        for (ServerPlayerEntity player : world.getPlayers()) {
+            ServerPlayNetworking.send(player, payload);
+        }
+    }
+
+    private static void sendRegionEntityStates(String id, RegionTickManager region, ServerWorld world) {
+        ArrayList<EntityStateRecord> entityStates = new ArrayList<>(region.collectEntityStates(world));
+        if (entityStates.isEmpty()) return;
+
+        RegionEntitySyncPayload payload = new RegionEntitySyncPayload(id, entityStates);
+        for (ServerPlayerEntity player : world.getPlayers()) {
+            ServerPlayNetworking.send(player, payload);
+        }
+    }
+
+    private static void sendRegionStateSync(String id, RegionTickManager region, ServerWorld world) {
+        RegionSyncPayload payload = new RegionSyncPayload(id, region.getDimensionId(), region.getChunkPositions(),
+                region.getState(), region.getRate(), region.getVirtualTime(),
+                region.isDisableHopperTick(), region.isDisableEntityTick(), region.isDisableObserverTick());
         for (ServerPlayerEntity player : world.getPlayers()) {
             ServerPlayNetworking.send(player, payload);
         }
@@ -252,9 +329,11 @@ public class RelativityTick implements ModInitializer {
         region.setReachedMsptLimit(false);
         region.setReachTickDurationLimit(false);
 
+        ServerTickBridge.LocalTickState tickState = new ServerTickBridge.LocalTickState();
         while (regionBudgetNano > 0 && stepsTaken < stepsToTake && remainingSteps > 0) {
             long tickStartNano = System.nanoTime();
-            region.tickRegion(world, blockScheduler, blockTicker, fluidScheduler, fluidTicker);
+            tickState.clear();
+            region.tickRegion(world, blockScheduler, blockTicker, fluidScheduler, fluidTicker, tickState);
             regionTickDurationNano += System.nanoTime() - tickStartNano;
             stepsTaken++;
             remainingSteps--;

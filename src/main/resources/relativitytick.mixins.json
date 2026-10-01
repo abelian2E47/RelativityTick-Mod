@@ -18,7 +18,9 @@
     "SpawnHelperMixin",
     "TickMangerMixin",
     "WorldChunkAccessor",
+    "WorldChunkBlockActivityMixin",
     "WorldChunkDirectBlockEntityTickInvokerMixin",
+    "WrappedBlockEntityTickInvokerMixin",
     "WorldMixin",
     "WorldTickSchedulerAccessor",
     "WorldAccessor"

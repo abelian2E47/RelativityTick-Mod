@@ -29,11 +29,14 @@ public abstract class   WorldChunkDirectBlockEntityTickInvokerMixin {
             return;
         }
 
-        long chunkPos = ChunkPos.toLong(this.blockEntity.getPos());
-        RegionTickManager region = RegionsManager.getRegionByChunk(world, chunkPos);
+        //区域刻内部不取消自己的 tick。把它提到查询之前：区域刻的方块实体 tick 走的就是这个原版
+        //invoker，这一步能整段省掉"每方块实体每次 tick 一次区块→区域查询"的开销。
         if (RegionTimeContext.getTime(world) != null) {
             return;
         }
+
+        long chunkPos = ChunkPos.toLong(this.blockEntity.getPos());
+        RegionTickManager region = RegionsManager.getRegionByChunk(world, chunkPos);
         if (region != null && region.isControlled()) {
             ci.cancel();
         }

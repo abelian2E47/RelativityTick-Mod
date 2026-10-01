@@ -2,6 +2,7 @@ package com.abelian;
 
 import com.abelian.config.RelativityTickConfig;
 import com.abelian.network.*;
+import com.abelian.regionTick.RegionDashRunner;
 import com.abelian.regionTick.RegionTickManager;
 import com.abelian.regionTick.RegionsManager;
 import com.abelian.regionTick.RegionTickManager.RegionState;
@@ -34,7 +35,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.BiConsumer;
 
 public class ServerCommands {
 
@@ -116,6 +116,14 @@ public class ServerCommands {
                                 .executes(ctx -> stepRegion(RegionCommandContext.of(ctx), 1, true))
                                 .then(CommandManager.argument("ticks", IntegerArgumentType.integer(1, 1000))
                                         .executes(ctx -> stepRegion(RegionCommandContext.of(ctx), IntegerArgumentType.getInteger(ctx, "ticks"), true)))))
+                .then(CommandManager.literal("sprint")
+                        .executes(ctx -> sprintRegion(RegionCommandContext.current(ctx), 0, true))
+                        .then(CommandManager.argument("ticks", IntegerArgumentType.integer(1))
+                                .executes(ctx -> sprintRegion(RegionCommandContext.current(ctx), IntegerArgumentType.getInteger(ctx, "ticks"), false)))
+                        .then(regionId()
+                                .executes(ctx -> sprintRegion(RegionCommandContext.of(ctx), 0, true))
+                                .then(CommandManager.argument("ticks", IntegerArgumentType.integer(1))
+                                        .executes(ctx -> sprintRegion(RegionCommandContext.of(ctx), IntegerArgumentType.getInteger(ctx, "ticks"), false)))))
                 .then(CommandManager.literal("rate")
                         .executes(ctx -> setRate(RegionCommandContext.current(ctx), 20))
                         .then(CommandManager.argument("rate", DoubleArgumentType.doubleArg(0.1, 10000))
@@ -125,7 +133,9 @@ public class ServerCommands {
                                 .then(CommandManager.argument("rate", DoubleArgumentType.doubleArg(0.1, 10000))
                                         .executes(ctx -> setRate(RegionCommandContext.of(ctx), DoubleArgumentType.getDouble(ctx, "rate"))))))
                 .then(CommandManager.literal("status")
-                        .executes(ctx -> getAllRegionStatus(ctx.getSource()))
+                        .executes(ctx -> getRegionStatus(RegionCommandContext.current(ctx)))
+                        .then(CommandManager.literal("all")
+                                .executes(ctx -> getAllRegionStatus(ctx.getSource())))
                         .then(regionId().executes(ctx -> getRegionStatus(RegionCommandContext.of(ctx)))))
         );
 
@@ -230,9 +240,14 @@ public class ServerCommands {
         if (rcc.isInvalid()) return 0;
         boolean takenOver = ensureTakenOver(rcc);
 
-        if (takenOver || rcc.manager.isRunning()) {
+        if (takenOver || rcc.manager.isRunning() || rcc.manager.isSprinting()) {
+            //setState 顺带清掉冲刺倒计时
             rcc.manager.setState(RegionState.FROZEN);
             sendFeedback(rcc.source, rcc.id, takenOver ? "relativitytick.command.region.taken_over_frozen" : "relativitytick.command.region.frozen");
+            int canceledDashSteps = rcc.manager.cancelPendingDashSteps();
+            if (canceledDashSteps > 0) {
+                sendFeedback(rcc.source, rcc.id, "relativitytick.command.region.canceled_pending_steps", canceledDashSteps);
+            }
             sendEntitySyncPayload(rcc, rcc.manager.collectEntityStates(rcc.world));
         } else {
             int canceledSteps = rcc.manager.getPendingSteps();
@@ -294,7 +309,7 @@ public class ServerCommands {
         rcc.manager.releaseRegion(blockScheduler, rcc.world.getTime());
         rcc.manager.releaseRegion(fluidScheduler, rcc.world.getTime());
         rcc.manager.setState(RegionState.RELEASED);
-        rcc.manager.setPendingSteps(0);
+        rcc.manager.cancelAllPendingSteps();
         rcc.manager.setAccumulator(0.0);
     }
 
@@ -304,12 +319,15 @@ public class ServerCommands {
             rcc.source.sendError(Text.translatable("relativitytick.command.error.region_must_be_taken_over").formatted(Formatting.RED));
             return 0;
         }
-        if (rcc.manager.isRunning()) {
+        if (rcc.manager.isRunning() || rcc.manager.isSprinting()) {
             rcc.source.sendError(Text.translatable("relativitytick.command.error.region_must_be_frozen").formatted(Formatting.RED));
             return 0;
         }
 
         if (!dash) {
+            //step 换成 rate 节奏推进：取消 dash 携带的剩余步数，避免同一 gt 里两条推进路径并存
+            int canceledDashSteps = rcc.manager.cancelPendingDashSteps();
+
             int totalPending = rcc.manager.getPendingSteps() + steps;
             rcc.manager.setPendingSteps(totalPending);
 
@@ -321,25 +339,37 @@ public class ServerCommands {
             }
 
             sendFeedback(rcc.source, rcc.id, "relativitytick.command.region.stepping", steps);
+            if (canceledDashSteps > 0) {
+                sendFeedback(rcc.source, rcc.id, "relativitytick.command.region.canceled_pending_steps", canceledDashSteps);
+            }
             syncRegionState(rcc);
             return 1;
         }
 
-        BiConsumer<BlockPos, Block> blockTicker = (pos, block) -> RelativityTickUtils.tickBlock(rcc.world, pos, block);
-        BiConsumer<BlockPos, Fluid> fluidTicker = (pos, fluid) -> RelativityTickUtils.tickFluid(rcc.world, pos, fluid);
+        //dash：命令在 END_SERVER_TICK 之后执行，这里自己开一批（批内只有本区域在 tick）
+        com.abelian.ServerTickBridge.beginRegionTickBatch();
+        //步数挂到 dash 携带池：本 gt 跑到预算截断，剩下的由后续 gt 继续按同一节奏跑满
+        int totalDashSteps = rcc.manager.getPendingDashSteps() + steps;
+        RegionDashRunner.DashResult result = RegionDashRunner.runDash(
+                rcc.source.getServer(), rcc.manager, rcc.world, totalDashSteps, true);
+        rcc.manager.setPendingDashSteps(result.remainingSteps());
+        if (result.stepsTaken() > 0) {
+            rcc.manager.recordTickDuration(result.durationNano());
+        }
 
         Map<Integer, EntityStateRecord> entityStates = new LinkedHashMap<>();
-        com.abelian.ServerTickBridge.beginRegionTickBatch();
-        for (int i = 0; i < steps; i++) {
-            rcc.manager.tickRegion(rcc.world, rcc.world.getBlockTickScheduler(), blockTicker, rcc.world.getFluidTickScheduler(), fluidTicker);
-        }
         for (EntityStateRecord state : rcc.manager.collectEntityStates(rcc.world)) {
             entityStates.put(state.entityId(), state);
         }
 
         rcc.manager.setPendingSteps(0);
 
-        sendFeedback(rcc.source, rcc.id, "relativitytick.command.region.stepped", steps);
+        if (result.remainingSteps() > 0) {
+            sendFeedback(rcc.source, rcc.id, "relativitytick.command.region.stepped_partial",
+                    result.stepsTaken(), result.remainingSteps());
+        } else {
+            sendFeedback(rcc.source, rcc.id, "relativitytick.command.region.stepped", result.stepsTaken());
+        }
         syncRegionState(rcc);
 
         sendStepPayload(rcc, 0);
@@ -349,12 +379,47 @@ public class ServerCommands {
         return 1;
     }
 
+    private static int sprintRegion(RegionCommandContext rcc, int sprintTicks, boolean continuous) {
+        if (rcc.isInvalid()) return 0;
+
+        if (continuous && rcc.manager.isSprinting()) {
+            rcc.manager.stopSprint();
+            sendFeedback(rcc.source, rcc.id, "relativitytick.command.region.sprint_stopped");
+            syncRegionState(rcc);
+            return 1;
+        }
+
+        RegionState previousState = rcc.manager.isSprinting() ? rcc.manager.getStateBeforeSprint()
+                : rcc.manager.isControlled() ? rcc.manager.getState() : RegionState.FROZEN;
+        boolean takenOver = ensureTakenOver(rcc);
+
+        int canceledSteps = rcc.manager.cancelAllPendingSteps();
+
+        rcc.manager.startSprint(previousState, sprintTicks, continuous);
+
+        if (canceledSteps > 0) {
+            sendFeedback(rcc.source, rcc.id, "relativitytick.command.region.canceled_pending_steps", canceledSteps);
+        }
+        if (continuous) {
+            sendFeedback(rcc.source, rcc.id, takenOver
+                    ? "relativitytick.command.region.taken_over_sprint_started_continuous"
+                    : "relativitytick.command.region.sprint_started_continuous");
+        } else {
+            sendFeedback(rcc.source, rcc.id, takenOver
+                    ? "relativitytick.command.region.taken_over_sprint_started"
+                    : "relativitytick.command.region.sprint_started", sprintTicks);
+        }
+        syncRegionState(rcc);
+        return 1;
+    }
+
     private static int setRate(RegionCommandContext rcc, double rate) {
         if (rcc.isInvalid()) return 0;
         boolean wasControlled = rcc.manager.isControlled();
         boolean wasRunning = rcc.manager.isRunning();
 
         rcc.manager.setRate(rate);
+        rcc.manager.cancelPendingDashSteps();
         if (!wasControlled) {
             takeOver(rcc);
             rcc.manager.setAccumulator(1.0);
@@ -364,8 +429,8 @@ public class ServerCommands {
         }
 
         RegionsManager.savePersistentState();
-        //重置TPS统计缓存
-        rcc.manager.resetRecentStepCount(rate);
+        //速率变了，丢掉旧采样等新的实测值（不拿目标速率冒充实测）
+        rcc.manager.resetStepRateSampling();
 
         sendFeedback(rcc.source, rcc.id, wasControlled ? "relativitytick.command.region.rate_set" : "relativitytick.command.region.taken_over_rate_set", formatConfigValue(rate));
         syncRegionState(rcc);
@@ -441,13 +506,19 @@ public class ServerCommands {
     private static void sendRegionStatus(ServerCommandSource source, String id, RegionTickManager mgr) {
         boolean controlled = mgr.isControlled();
         boolean running = controlled && mgr.isRunning();
-        int pending = mgr.getPendingSteps();
-        String stateKey = !controlled ? "relativitytick.command.state.released" : running ? "relativitytick.command.state.running" : pending > 0 ? "relativitytick.command.state.stepping" : "relativitytick.command.state.frozen";
+        boolean sprinting = controlled && mgr.isSprinting();
+        //dash 携带的剩余步数一并计入"等待步进"：它们同样会在后续 gt 被消掉，只是节奏不同
+        int pending = mgr.getPendingWorkSteps();
+        String stateKey = !controlled ? "relativitytick.command.state.released"
+                : sprinting ? "relativitytick.command.state.sprinting"
+                : running ? "relativitytick.command.state.running"
+                : pending > 0 ? "relativitytick.command.state.stepping"
+                : "relativitytick.command.state.frozen";
 
         source.sendFeedback(() -> Text.translatable("relativitytick.command.status.header",
                 Text.literal(id).formatted(Formatting.AQUA)), false);
         source.sendFeedback(() -> Text.translatable("relativitytick.command.status.timeline",
-                Text.literal(String.valueOf(mgr.getStepped())).formatted(Formatting.AQUA)), false);
+                Text.literal(String.valueOf(mgr.getVirtualTime())).formatted(Formatting.AQUA)), false);
         source.sendFeedback(() -> Text.translatable("relativitytick.command.status.state",
                 Text.translatable(stateKey).formatted(stateFormatting(stateKey))), false);
         source.sendFeedback(() -> Text.translatable("relativitytick.command.status.chunks",
@@ -458,10 +529,21 @@ public class ServerCommands {
         double costRatio = regionTickDuration / regionTickDurationLimit;
         int costColor = costRatio >= 0.9 ? 0xFF5555 : costRatio >= 0.6 ? 0xFFA500 : 0x55FF55;
 
+        //TPS 是实测值（按真实时间加权），采样时长不够时显示"采样中"，不拿目标速率顶替
+        Text tpsText = mgr.isStepRateSampleReady()
+                ? Text.literal(String.format("%.2f", mgr.getTPS())).formatted(Formatting.GREEN)
+                : Text.translatable("relativitytick.command.status.tps_measuring").formatted(Formatting.GRAY);
+
         if (running) {
             source.sendFeedback(() -> Text.translatable("relativitytick.command.status.tps_rate",
-                    Text.literal(String.format("%.2f", mgr.getTPS())).formatted(Formatting.GREEN),
+                    tpsText,
                     Text.literal(String.format("%.2f", mgr.getRate())).formatted(Formatting.GREEN)), false);
+
+        } else if (sprinting) {
+            //冲刺不按速率推进，速率列显示"不限"；TPS 仍是实测值
+            source.sendFeedback(() -> Text.translatable("relativitytick.command.status.tps_rate",
+                    tpsText,
+                    Text.translatable("relativitytick.command.status.rate_unlimited").formatted(Formatting.GREEN)), false);
 
         } else {
             source.sendFeedback(() -> Text.translatable("relativitytick.command.status.region_tps_rate",
@@ -473,9 +555,16 @@ public class ServerCommands {
                 Text.literal(String.format("%.3f", regionTickDuration) + "ms").styled(style -> style.withColor(costColor)),
                 Text.literal(String.format("%.3f", regionTickDurationLimit) + "ms").formatted(Formatting.GREEN)), false);
 
-        if (controlled && !running) {
+        if (controlled && !running && !sprinting) {
             source.sendFeedback(() -> Text.translatable("relativitytick.command.status.pending_steps",
                     Text.literal(String.valueOf(pending)).formatted(pending > 0 ? Formatting.GOLD : Formatting.GRAY)), false);
+        }
+
+        if (sprinting) {
+            Text sprintRemaining = mgr.isSprintContinuous()
+                    ? Text.translatable("relativitytick.command.status.sprint_continuous").formatted(Formatting.GOLD)
+                    : Text.literal(mgr.getSprintRemainingGt() + " gt").formatted(Formatting.GOLD);
+            source.sendFeedback(() -> Text.translatable("relativitytick.command.status.sprint_remaining", sprintRemaining), false);
         }
 
         //提示
@@ -503,6 +592,7 @@ public class ServerCommands {
     private static Formatting stateFormatting(String stateKey) {
         return switch (stateKey) {
             case "relativitytick.command.state.running" -> Formatting.GREEN;
+            case "relativitytick.command.state.sprinting" -> Formatting.RED;
             case "relativitytick.command.state.stepping" -> Formatting.GOLD;
             case "relativitytick.command.state.frozen" -> Formatting.AQUA;
             default -> Formatting.GRAY;
@@ -543,3 +633,4 @@ public class ServerCommands {
         source.sendFeedback(() -> Text.translatable(translationKey, translationArgs), false);
     }
 }
+

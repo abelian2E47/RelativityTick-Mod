@@ -101,14 +101,6 @@ public class ClientRegion {
         interpolationState.tickDelta = interpolationState.phase;
     }
 
-    public void recordAuthoritySync() {
-        long now = System.nanoTime();
-        interpolationState.lastPacketTime = now;
-        interpolationState.lastTickTime = now;
-        interpolationState.phase = 0.0f;
-        interpolationState.tickDelta = 0.0f;
-    }
-
     public void updateRenderDelta() {
         if (interpolationState.lastTickTime == 0) {
             interpolationState.tickDelta = 1.0f;
@@ -162,7 +154,6 @@ public class ClientRegion {
         return (float) (1000.0 * ticksPerBatch / effectiveRate);
     }
 
-    //步进通告：累计本 episode 服务端请求的步数，并让首步立刻到期
     public void announceSteps(int serverPending) {
         if (serverPending > 0) {
             int added = serverPending - this.pendingSteps;
@@ -177,17 +168,14 @@ public class ClientRegion {
         this.pendingSteps = Math.max(0, serverPending);
     }
 
-    //本 episode 已通告但还没本地回放的步数
     public int pendingReplayCount() {
         return Math.max(0, this.announcedSteps - this.replayedSteps);
     }
 
-    //记录已本地回放的步数
     public void markStepsReplayed(int steps) {
         this.replayedSteps += Math.max(0, steps);
     }
 
-    //回到运行/释放状态时清空回放预算
     public void resetReplayBudget() {
         this.announcedSteps = 0;
         this.replayedSteps = 0;
@@ -197,7 +185,7 @@ public class ClientRegion {
 
     public boolean isRunning(){ return regionState == RegionTickManager.RegionState.RUNNING; }
 
-    public boolean isStepping(){ return pendingSteps > 0 || pendingReplayCount() > 0; }
+    public boolean isSprinting(){ return regionState == RegionTickManager.RegionState.SPRINTING; }
 
     public boolean isDisableHopperTick(){ return disableHopperTick; }
 

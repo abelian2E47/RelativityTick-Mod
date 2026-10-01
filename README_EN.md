@@ -7,6 +7,8 @@ RelativityTick is a Fabric mod that allows you to control the game tick rate of 
 - Create and manage regions by chunk.
 - Pause entity ticks, block entity ticks, random ticks, and scheduled ticks in selected regions.
 - Step through region ticks for debugging redstone, farms, and entity behavior.
+- Dash through region ticks: run as many as the tick budget allows right away, carrying the rest over to later ticks.
+- Sprint: fill the region budget with dash on every server tick to advance a region as fast as the budget allows.
 - Run regions at custom rates to speed up or slow down local gameplay.
 - Display region status, region TPS, running rate, and tick processing time.
 - Set a maximum tick processing time for each region.
@@ -124,11 +126,31 @@ The steps are processed during the server tick loop, and entity states in the re
 /regionTick dash [region_id] [ticks]
 ```
 
-Immediately executes the specified number of region ticks without waiting for subsequent server ticks:
+Executes the specified number of region ticks as fast as possible within the same server tick:
 
 ```text
 /regionTick dash test 100
 ```
+
+Dash is subject to the region tick time limit and the MSPT limit as well. When a dash fills the budget and gets cut short, the remaining steps are remembered and keep running at the same pace (filling the budget on every later server tick) until they are done; the command feedback reports how many steps were taken and how many are left.
+
+### Sprinting
+
+```text
+/regionTick sprint [region_id] [ticks]
+```
+
+Fills the region budget / global MSPT budget with the dash primitive on every server tick:
+
+- With `ticks`: sprints for that many server ticks, then automatically restores the state the region had before the sprint (running stays running, frozen goes back to frozen).
+- Without `ticks`: sprints continuously until the same command is executed again to stop it.
+
+```text
+/regionTick sprint test 100
+/regionTick sprint test
+```
+
+A sprinting region does not advance by its rate (the status shows the rate as "Unlimited"), its state shows as "Sprinting", and its chunk borders are drawn in orange-red. Starting a sprint takes the region over and cancels any pending steps; `step`/`dash` fail while sprinting, and `freeze`, `rate` and takeover (release) all interrupt it.
 
 ### Tick Time Limit
 
@@ -146,7 +168,7 @@ This limit prevents a single region from using too much time during a server tic
 
 ### Status
 
-View all regions:
+View the region you are currently in (same as `step` and `dash`: without a region id the command resolves the region at the executor's position):
 
 ```text
 /regionTick status
@@ -158,14 +180,20 @@ View a specific region:
 /regionTick status <region_id>
 ```
 
+View all regions:
+
+```text
+/regionTick status all
+```
+
 The status output includes:
 
-- Region time.
-- Current state: Released, Frozen, Running, or Stepping.
+- Region time (RegionTime, the start time plus the steps taken).
+- Current state: Released, Frozen, Running, Stepping, or Sprinting.
 - Number of chunks.
-- Region TPS and target rate.
-- Tick processing time and its limit.
-- Number of pending steps.
+- Region TPS and target rate (the rate shows as "Unlimited" while sprinting). Region TPS is measured: it is the real steps per second, weighted by wall-clock elapsed time (not "steps per gt × 20"), so it stays accurate when the server lags or its tick rate changes; until one second of samples has accumulated it shows "measuring" instead of reporting the target rate as if it were measured.
+- Tick processing time and its limit (the duration is averaged over wall-clock time as well, so a single fat gt does not skew it).
+- Number of pending steps (pending dash steps are counted as well).
 
 ## Chunk Management
 

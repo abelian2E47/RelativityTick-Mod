@@ -49,7 +49,10 @@ public class EntityRenderDispatcherMixin {
 
         String regionID = region.getId();
         EntityInterpolationManager.EntityRenderInterpolation anchorInterpolation = EntityInterpolationManager.getInterpolation(regionAnchor, regionID);
-        if (anchorInterpolation == null) return;
+        if (anchorInterpolation == null) {
+            args.set(4, RegionTickDeltaManager.getTickDelta(regionID));
+            return;
+        }
 
         float tickDelta = RegionTickDeltaManager.getTickDelta(regionID);
         args.set(4, tickDelta);

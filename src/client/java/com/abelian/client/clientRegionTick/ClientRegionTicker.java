@@ -2,6 +2,7 @@ package com.abelian.client.clientRegionTick;
 
 import com.abelian.RegionTimeContext;
 import com.abelian.client.render.EntityInterpolationManager;
+import com.abelian.client.render.RegionTickDeltaManager;
 import com.abelian.client.mixin.ClientEntityManagerAccessor;
 import com.abelian.client.mixin.ClientWorldAccessor;
 import com.abelian.network.EntityStateRecord;
@@ -111,39 +112,39 @@ public class ClientRegionTicker {
         if (states.isEmpty()) return;
 
         ClientRegion region = ClientRegionManager.getRegion(regionId);
-        boolean smoothAlign = region != null && (region.isRunning() || region.isStepping());
+        if (region == null || !region.isControlled()) return;
 
-        int smoothed = 0;
+        //这一批同步共用一个当前渲染相位
+        float tickDelta = RegionTickDeltaManager.getTickDelta(regionId);
+
         for (EntityStateRecord state : states) {
             Entity entity = world.getEntityById(state.entityId());
             if (entity == null || entity.isRemoved() || entity instanceof PlayerEntity) continue;
 
             Vec3d serverPos = new Vec3d(state.x(), state.y(), state.z());
-            Vec3d previous = smoothAlign ? entity.getPos() : null;
-
-            if (previous != null) {
-                double driftSq = previous.squaredDistanceTo(serverPos);
-                //双端坐标差距不大就不强行同步
-                if (driftSq < AUTHORITY_SKIP_DISTANCE_SQ) {
-                    continue;
-                }
+            Vec3d renderedPos = renderedPosition(entity, regionId, tickDelta);
+            if (renderedPos.squaredDistanceTo(serverPos) < AUTHORITY_SKIP_DISTANCE_SQ) {
+                continue;
             }
 
             entity.refreshPositionAndAngles(state.x(), state.y(), state.z(), state.yaw(), state.pitch());
             entity.setVelocity(new Vec3d(state.velocityX(), state.velocityY(), state.velocityZ()));
 
-            if (previous != null && previous.squaredDistanceTo(entity.getPos()) <= AUTHORITY_SNAP_DISTANCE_SQ) {
-                ENTITY_INTERPOLATIONS.put(entity.getId(),
-                        new EntityInterpolationManager.EntityRenderInterpolation(regionId, previous, entity.getPos()));
-                smoothed++;
-            } else {
-                ENTITY_INTERPOLATIONS.remove(entity.getId());
-            }
+            Vec3d intervalStart = renderedPos.squaredDistanceTo(entity.getPos()) <= AUTHORITY_SNAP_DISTANCE_SQ
+                    ? renderedPos
+                    : entity.getPos();
+            ENTITY_INTERPOLATIONS.put(entity.getId(),
+                    new EntityInterpolationManager.EntityRenderInterpolation(regionId, intervalStart, entity.getPos()));
         }
+    }
 
-        if (smoothAlign && smoothed > 0) {
-            region.recordAuthoritySync();
+    private static Vec3d renderedPosition(Entity entity, String regionId, float tickDelta) {
+        EntityInterpolationManager.EntityRenderInterpolation interpolation =
+                EntityInterpolationManager.getInterpolation(entity, regionId);
+        if (interpolation == null) {
+            return entity.getPos();
         }
+        return EntityInterpolationManager.interpolate(interpolation, tickDelta);
     }
 
     //清理map

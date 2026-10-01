@@ -7,11 +7,20 @@ public final class RegionTimeContext {
     private static final ThreadLocal<State> CURRENT = new ThreadLocal<>();
 
     public static void begin(World world, long tickTime) {
-        CURRENT.set(new State(world, tickTime));
+        State state = CURRENT.get();
+        if (state == null) {
+            state = new State();
+            CURRENT.set(state);
+        }
+        state.world = world;
+        state.tickTime = tickTime;
     }
 
     public static void end() {
-        CURRENT.remove();
+        State state = CURRENT.get();
+        if (state != null) {
+            state.world = null;
+        }
     }
 
     public static Long getTime(World world) {
@@ -19,5 +28,8 @@ public final class RegionTimeContext {
         return state != null && state.world == world ? state.tickTime : null;
     }
 
-    private record State(World world, long tickTime) { }
+    private static final class State {
+        private World world;
+        private long tickTime;
+    }
 }

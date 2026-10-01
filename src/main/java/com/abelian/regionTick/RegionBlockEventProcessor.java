@@ -10,6 +10,7 @@ import net.minecraft.util.math.ChunkPos;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.LongPredicate;
 import java.util.function.Predicate;
 
 public final class RegionBlockEventProcessor {
@@ -41,7 +42,7 @@ public final class RegionBlockEventProcessor {
     // [修改点2] 与 ServerWorld.processSyncedBlockEvents 的抽干语义对齐时的“代”数上限，仅作自反馈事件的安全阀
     private static final int MAX_BLOCK_EVENT_GENERATIONS = 1024;
 
-    public static void process(ServerWorld world, RegionTickManager region) {
+    public static void process(ServerWorld world, RegionTickManager region, LongPredicate chunkBlockTicks) {
         ServerWorldAccessor accessor = (ServerWorldAccessor) world;
         List<BlockEvent> deferred = DEFERRED_EVENTS.computeIfAbsent(world, ignored -> new ArrayList<>());
         // [修改点2] 原版 processSyncedBlockEvents 是 while(!queue.isEmpty()) 抽干队列，所以“处理方块事件时
@@ -58,7 +59,7 @@ public final class RegionBlockEventProcessor {
 
             for (BlockEvent event : events) {
                 RegionTickManager owner = RegionsManager.getRegionByChunk(world, ChunkPos.toLong(event.pos()));
-                if (owner == region && region.isControlled() && world.shouldTickBlockPos(event.pos())) {
+                if (owner == region && region.isControlled() && chunkBlockTicks.test(ChunkPos.toLong(event.pos()))) {
                     processEvent(world, accessor, event);
                 } else {
                     deferred.add(event);

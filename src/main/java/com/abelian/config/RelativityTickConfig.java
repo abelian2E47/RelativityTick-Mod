@@ -84,7 +84,6 @@ public final class RelativityTickConfig {
         writeConfig();
     }
 
-
     private static void setDefaults() {
         maxMspt = DEFAULT_MAX_MSPT;
         chunkTickEnabled = DEFAULT_CHUNK_TICK_ENABLED;

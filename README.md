@@ -1,12 +1,14 @@
 # RelativityTick
 
-RelativityTick 是一个 Fabric 模组，用于对指定区域（由一个或多个 Minecraft 区块组成）单独控制游戏 Tick。你可以冻结区域、逐 Tick 执行、以自定义速率运行区域，或让不同区域拥有相互独立的时间进度。
+RelativityTick 是一个 Fabric 模组，用于对指定区域（由一个或多个 Minecraft 区块组成）单独控制游戏 Tick。你可以冻结区域、逐 Tick 执行、连续冲刺执行、以自定义速率运行区域，或让不同区域拥有相互独立的时间进度。
 
 ## 功能
 
 - 以区块为单位创建和管理区域。
 - 暂停指定区域的实体、方块实体、随机刻和计划刻处理。
 - 逐步执行区域 Tick，方便调试红石、农场和实体行为。
+- Dash 执行区域 Tick：立刻把预算允许的 Tick 一次跑完，跑不完的自动攒到后续 Tick 继续。
+- 冲刺：每个服务端 Tick 都用 Dash 跑满预算，尽快推进区域时间。
 - 以自定义速率运行区域，例如让某个区域加速或减速。
 - 显示区域状态、区域 TPS、运行速率和 Tick 处理耗时。
 - 设置单次 Tick 处理时间上限。
@@ -124,11 +126,31 @@ RelativityTick 是一个 Fabric 模组，用于对指定区域（由一个或多
 /regionTick dash [区域ID] [ticks]
 ```
 
-立即执行指定数量的区域 Tick，不需要等待后续服务器 Tick：
+在同一个服务端 Tick 内尽快执行指定数量的区域 Tick：
 
 ```text
 /regionTick dash test 100
 ```
+
+Dash 同样受区域 Tick 时间上限和 MSPT 上限约束。当一次 Dash 跑满预算而被截断时，剩余的步数会被记下来，在后续服务端 Tick 里继续按同样的方式（每个 Tick 都跑满预算）跑完，直到执行完毕；被截断时命令反馈会提示已步进多少、还剩多少。
+
+### 冲刺
+
+```text
+/regionTick sprint [区域ID] [ticks]
+```
+
+每个服务端 Tick 都用 Dash 的方式跑满区域预算/全局 MSPT 预算：
+
+- 带 `ticks`：冲刺这么多服务端 Tick 后自动结束，并恢复到冲刺前的状态（原本在运行则回到运行，原本冻结则回到冻结）。
+- 不带 `ticks`：持续冲刺，直到再次执行同一条命令停止。
+
+```text
+/regionTick sprint test 100
+/regionTick sprint test
+```
+
+冲刺不按速率推进（状态里的速率显示为"不限"），状态显示为"冲刺中"，区块边界显示为橙红色。开始冲刺会自动接管区域，并取消区域里等待执行的步进；冲刺期间 `step`/`dash` 会报错，`freeze`、`rate`、`takeover`（释放）都会打断冲刺。
 
 ### Tick 时间上限
 
@@ -146,7 +168,7 @@ RelativityTick 是一个 Fabric 模组，用于对指定区域（由一个或多
 
 ### 状态
 
-查看所有区域：
+查看当前所在区域（与 `step`、`dash` 等一致：不指定区域时按执行者所在位置找区域）：
 
 ```text
 /regionTick status
@@ -158,14 +180,20 @@ RelativityTick 是一个 Fabric 模组，用于对指定区域（由一个或多
 /regionTick status <区域ID>
 ```
 
+查看所有区域：
+
+```text
+/regionTick status all
+```
+
 状态信息包括：
 
-- 区域时间。
-- 当前状态：Released、Frozen、Running 或 Stepping。
+- 区域时间（RegionTime，即起点加上已步进数）。
+- 当前状态：Released、Frozen、Running、Stepping 或 Sprinting。
 - 区块数量。
-- 区域 TPS 和目标速率。
-- Tick 处理耗时与限制。
-- 等待执行的步进数量。
+- 区域 TPS 和目标速率（冲刺期间速率显示为"不限"）。区域 TPS 是实测值：按真实经过时间加权统计每秒实际步数（不是"每 gt 步数 × 20"），因此服务端掉刻或改变刻率时读数依然准确；采样时长不足 1 秒时显示"采样中"，不会用目标速率冒充实测。
+- Tick 处理耗时与限制（耗时同样按真实时间加权平均，不会被单个大 gt 带偏）。
+- 等待执行的步进数量（Dash 携带的剩余步数也一并计入）。
 
 ## 区块管理
 

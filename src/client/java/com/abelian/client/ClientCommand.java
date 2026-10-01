@@ -54,7 +54,6 @@ public class ClientCommand {
         );
     }
 
-    //客户端本地渲染配置命令：通过 fabric 客户端命令 API 注册，专用服务器客户端同样可见
     public static void registerClientConfigCommands(CommandDispatcher<FabricClientCommandSource> dispatcher, CommandRegistryAccess registryAccess) {
         dispatcher.register(ClientCommandManager.literal("relativityTickClient")
                 .then(ClientCommandManager.literal("scheduledTickRender")
@@ -77,7 +76,17 @@ public class ClientCommand {
                         .executes(context -> showRegionLineWidth(context.getSource()))
                         .then(ClientCommandManager.argument("value", DoubleArgumentType.doubleArg(0.5, 16.0))
                                 .executes(context -> setRegionLineWidth(
-                                        context.getSource(), DoubleArgumentType.getDouble(context, "value"))))));
+                                        context.getSource(), DoubleArgumentType.getDouble(context, "value")))))
+                .then(ClientCommandManager.literal("regionRenderMode")
+                        .executes(context -> showRegionRenderMode(context.getSource()))
+                        .then(ClientCommandManager.argument("value", StringArgumentType.word())
+                                .suggests((context, builder) -> {
+                                    builder.suggest("lines");
+                                    builder.suggest("faces");
+                                    return builder.buildFuture();
+                                })
+                                .executes(context -> setRegionRenderMode(
+                                        context.getSource(), StringArgumentType.getString(context, "value"))))));
     }
 
     private static int showScheduledTickRender(FabricClientCommandSource source) {
@@ -122,6 +131,26 @@ public class ClientCommand {
             return 0;
         }
         return showRegionLineWidth(source);
+    }
+    private static int showRegionRenderMode(FabricClientCommandSource source) {
+        source.sendFeedback(Text.translatable("relativitytick.command.client.config.region_render_mode",
+                RelativityTickClientConfig.getRegionRenderMode()));
+        return 1;
+    }
+
+    private static int setRegionRenderMode(FabricClientCommandSource source, String value) {
+        if (!"lines".equalsIgnoreCase(value) && !"faces".equalsIgnoreCase(value)) {
+            source.sendError(Text.translatable("relativitytick.command.client.config.region_render_mode_invalid",
+                    value).formatted(Formatting.RED));
+            return 0;
+        }
+        try {
+            RelativityTickClientConfig.setRegionRenderMode(value);
+        } catch (IOException e) {
+            source.sendError(Text.translatable("relativitytick.command.error.config_save_failed").formatted(Formatting.RED));
+            return 0;
+        }
+        return showRegionRenderMode(source);
     }
 
     private static int showEntityInterpolation(FabricClientCommandSource source) {
