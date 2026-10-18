@@ -54,7 +54,6 @@ public class RegionTickManager {
         RELEASED,
         FROZEN,
         RUNNING,
-        //每 gt 都用 dash 原语跑满区域/全局预算。约束见 RegionDashRunner。
         SPRINTING
     }
 
@@ -71,7 +70,8 @@ public class RegionTickManager {
 
     private double rate = 20;
     private double accumulator = 0.0;
-    private double tickDurationLimit = 10.0;
+    //mspt 上限：一个 tick 窗口内区域刻允许消耗的合计毫秒数。
+    private double tickWindowLimitMs = 10.0;
     private boolean disableHopperTick = false;
     private boolean disableEntityTick = false;
     private boolean disableObserverTick = false;
@@ -83,20 +83,22 @@ public class RegionTickManager {
     private boolean anchorInRealTime = false;
     private boolean deferScheduledTickSnapshot = false;
 
-    //TPS 统计：以真实墙钟时间窗口计算“实际推进的区域 GT / 真实秒数”，再做 EMA 平滑。
-    //窗口而不是单个服务端 GT，避免低 TPS、长帧或 dash 批次造成瞬时值过度抖动。
+    //TPS 统计：按真实墙钟窗口算“推进的区域 GT / 真实秒数”，再取时间加权 EMA。
     private static final double TPS_AVERAGE_TIME_CONSTANT_SECONDS = 2.0;
     private static final long TPS_SAMPLE_WINDOW_NANOS = 1_000_000_000L;
-    //采样时长不足这个值就读数还不可信：status 显示“采样中”，不拿目标速率冒充实测。
+    //窗口不足这个时长时读数不可信，status 显示“采样中”。
     private static final double TPS_MIN_SAMPLE_SECONDS = 1.0;
-    //区域刻耗时用同一个思路平滑：单个 gt 的抖动不该直接变成读数。
+    //耗时读数用同一个时间常数平滑。
     private static final double TICK_DURATION_TIME_CONSTANT_SECONDS = 2.0;
     private double regionTPS = 0;
     private long tpsWindowStartNano = 0;
     private int tpsWindowStartStepped = 0;
     private long tpsSampledNano = 0;
     private boolean tpsSampling = false;
-    private float regionTickDuration = 0;
+    //一个 tick 窗口内区域刻的合计耗时（mspt）。
+    private float tickWindowMs = 0;
+    //单次区域刻的平均耗时（msprt = ms per region tick）。
+    private float msprtMs = 0;
     private long tickDurationLastNano = 0;
     private boolean tickDurationSampling = false;
 
@@ -146,8 +148,7 @@ public class RegionTickManager {
     }
 
     public <T> void takeOverRegion(WorldTickScheduler<T> worldScheduler) {
-        //原实现在遍历 ArrayList 时直接接管,而接管过程会改写调度器队列;
-        //这里改为对区块快照迭代,避免依赖 fastutil 映射在迭代期修改的未定义行为。
+        // 改为对区块快照迭代, 避免在遍历 ArrayList 时接管改写调度器队列
         for (ChunkTickManager chunk : new ArrayList<>(region.values())){
             chunk.takeOverChunk(worldScheduler, this);
         }
@@ -238,7 +239,7 @@ public class RegionTickManager {
             try {
                 tickRegionScheduledTicks(world, blockScheduler, blockTicker, fluidScheduler, fluidTicker, virtualTime);
                 tickChunkWorld(world);
-                RegionBlockEventProcessor.process(world, this, chunkPos -> tickState.chunkGate(world, chunkPos).blockTicks());
+                RegionBlockEventProcessor.process(world, this, tickState);
             } finally {
                 worldAccessor.setInBlockTick(previousInBlockTick);
             }
@@ -266,8 +267,7 @@ public class RegionTickManager {
                     }
                 }
                 : blockTicker;
-        //空转短路所需的"区域最早就绪时间"在这里一趟取完两侧（原来方块/流体各扫一遍 region.values()，
-        //每步 2×O(区块数)）。只读 peekNextTick，不动任何调度器状态。
+        // 空转短路所需的"区域最早就绪时间"在这里一趟取完两侧 (原来方块/流体各扫一遍)
         WorldTickSchedulerAccessor<Block> blockAccess = (WorldTickSchedulerAccessor<Block>) blockScheduler;
         WorldTickSchedulerAccessor<Fluid> fluidAccess = (WorldTickSchedulerAccessor<Fluid>) fluidScheduler;
         long earliestBlockTrigger = Long.MAX_VALUE;
@@ -280,9 +280,7 @@ public class RegionTickManager {
 
         int blockExecuted = tickScheduledTicks(blockScheduler, filterBlockTicker, virtualTime, earliestBlockTrigger);
         if (blockExecuted > 0) {
-            //方块阶段确实执行了计划刻 → 期间可能新排出流体刻。原实现的流体侧扫描发生在方块执行之后，
-            //这里重取一次流体侧，保证"当步就该执行的流体刻"不会被推迟到下一步。
-            //（方块侧无需重取：它的扫描在原实现里同样在方块执行之前。）
+            // 方块阶段可能新排出流体刻, 这里重取一次流体侧, 保证当步该执行的流体刻不被推迟
             earliestFluidTrigger = Long.MAX_VALUE;
             for (ChunkTickManager chunk : region.values()) {
                 earliestFluidTrigger = earliestTriggerOf(fluidAccess.getChunkTickSchedulers().get(chunk.getChunkPosLong()), earliestFluidTrigger);
@@ -300,11 +298,7 @@ public class RegionTickManager {
     }
 
     private void tickBlockEntities(ServerWorld world, ServerTickBridge.LocalTickState tickState) {
-        //lithium兼容: 只把"已经醒着但内部 ticker 被换过"的方块实体重绑回活 ticker;
-        //正在休眠的保持休眠(见 ServerTickBridge.rebindBlockEntityTickers 的注释),这样漏斗等
-        //在区域内的休眠收益与正常游戏一致。
-        //但"区域没在跑刻时"发生过的活动必须补一次唤醒: 那种事件在锂那边打的是真实时刻,会被判成
-        //"早于上次检查 → 没有变化",于是睡着的漏斗再也不会醒(物品一直躺在上面)。
+        // lithium 兼容: 只把"已醒着但 ticker 被换过"的方块实体重绑回活 ticker, 休眠的保持休眠
         ServerTickBridge.wakeChunksWithOutsideActivity(world, chunkPositions, tickState);
         ServerTickBridge.rebindBlockEntityTickers(world, chunkPositions);
         boolean shouldTick = world.getTickManager().shouldTick();
@@ -328,8 +322,7 @@ public class RegionTickManager {
     private void tickEntities(ServerWorld world, ServerTickBridge.LocalTickState tickState) {
         if (disableEntityTick) return;
 
-        //按区域预过滤的批级子表（P1）：顺序与原"每步过滤世界快照"完全一致（同一源表、同一谓词），
-        //只是整批算一次；下面的逐项复查一步都不能省，它们负责批内移动/消失的实体。
+        // 按区域预过滤的批级子表 (P1): 顺序与原"每步过滤世界快照"一致, 整批算一次
         List<Entity> candidates = ServerTickBridge.getRegionEntitySnapshot(world, this, chunkPositions, tickState.entitySnapshot(world));
         for (Entity entity : candidates) {
             if (entity instanceof PlayerEntity || entity.isRemoved()) continue;
@@ -392,11 +385,7 @@ public class RegionTickManager {
 
     private <T> int tickScheduledTicks(WorldTickScheduler<T> worldScheduler, BiConsumer<BlockPos, T> ticker, long virtualTrigger, long earliestTrigger) {
         WorldTickSchedulerAccessor<T> worldAccess = (WorldTickSchedulerAccessor<T>) worldScheduler;
-        //空转短路：优先队列只为把"本步到期的区块队列"按 triggerTick 归并。若本区域最早就绪的
-        //计划刻都还没到期，整段收集都不必发生（低倍率/空载区域大量步进属于这种情况）。
-        //earliestTrigger 由调用方在本侧该扫的时刻扫出（方块侧在执行之前、流体侧在方块执行之后，
-        //与原来的扫描时机一致），此处只读比较，不动任何调度器状态；真正执行前才对三个容器做清理，
-        //与原实现一致。
+        // 空转短路: 若本区域最早就绪的计划刻还没到期, 整段收集都不必发生
         Queue<OrderedTick<T>> dueTicks = worldAccess.getTickableTicks();
         List<OrderedTick<T>> tickedTicks = worldAccess.getTickedTicks();
         Set<OrderedTick<?>> inFlightTicks = worldAccess.getCopiedTickableTicksList();
@@ -408,8 +397,9 @@ public class RegionTickManager {
             return 0;
         }
 
+        // 归并顺序必须与原版一致, 否则同一步内到期计划刻的先后会与区域外不同
         Queue<ChunkTickScheduler<T>> tickableSchedulers = new PriorityQueue<>(
-                (first, second) -> OrderedTick.TRIGGER_TICK_COMPARATOR
+                (first, second) -> OrderedTick.BASIC_COMPARATOR
                         .compare(first.peekNextTick(), second.peekNextTick()));
 
         for (ChunkTickManager chunk : region.values()) {
@@ -424,17 +414,7 @@ public class RegionTickManager {
             }
         }
 
-        //[修改点3] 收集阶段：按原版 WorldTickScheduler 的批语义，先把本步到期的计划刻全部 poll 出队列，再统一执行。
-        //原版 tick() 是 collectTickableTicks 先把整批到期 tick 移出队列、之后才逐条执行，所以执行期间这些
-        //tick 的 isQueued=false；ObserverBlock 的 getStateForNeighborUpdate/onBlockAdded/onStateReplaced 都用
-        //isQueued 决定是否补排 +2 计划刻。就地 poll 立刻执行会让 isQueued 仍为 true 而漏排，
-        //实测：活塞推脸对脸侦测器时钟在区域内退化成 6gt（原版/非受控为 4gt）。
-        //[修改点4] 这一批必须落在原版 WorldTickScheduler.tickableTicks 上（而不是本地 List）。
-        //isTicking(pos,type) 只查 tickableTicks / copiedTickableTicksList，红石元件
-        //（AbstractRedstoneGateBlock.updatePowered、ComparatorBlock、RedstoneTorchBlock）用它判断
-        //"该位置的计划刻已经在本批里了，别再排一个"。用本地 List 收集会让 isTicking 恒为 false，
-        //导致同批内被邻居更新的元件多排一个 +2 计划刻，元件提前 2gt 动作。
-        //实测：四格一档中继器链撤源后末端两个同时熄灭（原版是依次熄灭）。
+        // [修改点3] 收集阶段: 按原版 WorldTickScheduler 批语义, 先把本步到期的计划刻全部 poll 出队列
         dueTicks.clear();
         tickedTicks.clear();
         inFlightTicks.clear();
@@ -451,9 +431,10 @@ public class RegionTickManager {
                 OrderedTick<T> competingTick = peekNextTick(tickableSchedulers);
                 while (dueTicks.size() < MAX_TICKS_EXECUTED_PER_STEP) {
                     OrderedTick<T> nextTick = scheduler.peekNextTick();
+                    //到期判定用 triggerTick（与原版一致），"是否继续抽同一个区块队列"用 BASIC 序（与原版 :162 一致）
                     if (nextTick == null || nextTick.triggerTick() > virtualTrigger
                             || competingTick != null
-                            && OrderedTick.TRIGGER_TICK_COMPARATOR.compare(nextTick, competingTick) > 0) {
+                            && OrderedTick.BASIC_COMPARATOR.compare(nextTick, competingTick) > 0) {
                         break;
                     }
 
@@ -468,9 +449,7 @@ public class RegionTickManager {
                 }
             }
 
-            //执行阶段：此时本步到期的 tick 已全部离开区块队列，isQueued 语义与原版一致；
-            //逐条 poll 出 tickableTicks 并同步剔除 copiedTickableTicksList，isTicking 语义也与原版一致；
-            //执行期间新排的计划刻不在本批内，留到下一步，与原版"新 tick 不在本刻批里"一致。
+            // 执行阶段: 逐条 poll 出 tickableTicks 并同步剔除 copiedTickableTicksList
             while (!dueTicks.isEmpty()) {
                 OrderedTick<T> executed = dueTicks.poll();
                 if (!inFlightTicks.isEmpty()) {
@@ -516,7 +495,7 @@ public class RegionTickManager {
         if (!isControlled()) return;
         //配置关闭时连收集都不做：collectScheduledTicks 要遍历本区域全部区块、逐条 new ScheduledTickRecord
         if (!RelativityTickConfig.isScheduledTickSendEnabled()) return;
-        sendScheduledTicks(collectScheduledTicks(world.getBlockTickScheduler()), collectScheduledTicks(world.getFluidTickScheduler()));
+        sendScheduledTicks(world, collectScheduledTicks(world.getBlockTickScheduler()), collectScheduledTicks(world.getFluidTickScheduler()));
     }
 
     //dash 抑制开关，见字段注释；调用方务必成对使用（try/finally）。
@@ -524,17 +503,17 @@ public class RegionTickManager {
         this.deferScheduledTickSnapshot = defer;
     }
 
-    private void sendScheduledTicks(List<ScheduledTickRecord> blockRecords, List<ScheduledTickRecord> fluidRecords) {
+    private void sendScheduledTicks(ServerWorld world, List<ScheduledTickRecord> blockRecords, List<ScheduledTickRecord> fluidRecords) {
         if (!RelativityTickConfig.isScheduledTickSendEnabled()) return;
 
-        //必须合并成一包发送：客户端 ClientScheduledTickManager 是按 regionId 覆盖存放（put），
-        //拆成方块/流体两包会让后到的流体包把方块计划刻从可视化数据里顶掉。
+        // 必须合并成一包发送: 客户端按 regionId 覆盖存放 (put), 拆包会让流体包顶掉方块计划刻
         List<ScheduledTickRecord> allRecords = new ArrayList<>(blockRecords.size() + fluidRecords.size());
         allRecords.addAll(blockRecords);
         allRecords.addAll(fluidRecords);
 
         ScheduledTickDataPayload payload = new ScheduledTickDataPayload(id, allRecords);
-        for (ServerPlayerEntity player : RelativityTickUtils.getServer().getPlayerManager().getPlayerList()) {
+        // 只发给本维度的玩家
+        for (ServerPlayerEntity player : world.getPlayers()) {
             ServerPlayNetworking.send(player, payload);
         }
     }
@@ -617,9 +596,9 @@ public class RegionTickManager {
 
     public double getAccumulator() {return accumulator;}
 
-    public double getTickDurationLimit() {return tickDurationLimit;}
+    public double getTickWindowLimitMs() {return tickWindowLimitMs;}
 
-    public void setMaxRegionCostMs(double maxRegionCostMs) {this.tickDurationLimit = Math.max(1.0, maxRegionCostMs);}
+    public void setTickWindowLimitMs(double maxRegionCostMs) {this.tickWindowLimitMs = Math.max(1.0, maxRegionCostMs);}
 
 
     public boolean isDisableHopperTick() { return disableHopperTick; }
@@ -652,7 +631,7 @@ public class RegionTickManager {
 
     public boolean isStepping(){ return pendingSteps > 0;}
 
-    //开始冲刺：previousState 为冲刺结束时要恢复的状态（未接管时由调用方传 FROZEN，冲刺不会自动释放区域）
+    // 开始冲刺: previousState 为持续冲刺结束时要恢复的状态 (未接管时传 FROZEN)
     public void startSprint(RegionState previousState, int sprintTicks, boolean continuous) {
         this.stateBeforeSprint = previousState == RegionState.SPRINTING ? RegionState.FROZEN : previousState;
         this.sprintContinuous = continuous;
@@ -667,7 +646,12 @@ public class RegionTickManager {
         return sprintRemainingGt <= 0;
     }
 
+    // 冲刺结束: 持续冲刺 (不带 gt) 是开关, 停时回到冲刺前的状态
     public void stopSprint() {
+        if (!sprintContinuous) {
+            setState(RegionState.FROZEN);
+            return;
+        }
         setState(stateBeforeSprint == RegionState.SPRINTING ? RegionState.FROZEN : stateBeforeSprint);
     }
 
@@ -717,20 +701,19 @@ public class RegionTickManager {
 
     public void  setReachTickDurationLimit(boolean reachTickDurationLimit) { this.reachTickDurationLimit = reachTickDurationLimit; }
 
-    /**
-     * 区域刻耗时同样按真实经过时间加权平均，避免单个 gt 的抖动（大 gt/空 gt）直接变成读数。
-     * totalNanoInTick <= 0 表示这个 gt 没推进，不参与平均。
-     */
-    public void recordTickDuration(long totalNanoInTick) {
-        if (totalNanoInTick <= 0) return;
+    /** 记录一次 tick 窗口：windowMs 是该窗口内区域刻的合计耗时，stepsTaken 是窗口内跑过的区域刻数。 */
+    public void recordTickDuration(long totalNanoInTick, int stepsTaken) {
+        if (totalNanoInTick <= 0 || stepsTaken <= 0) return;
 
-        double durationMs = totalNanoInTick / 1_000_000.0;
+        double windowMs = totalNanoInTick / 1_000_000.0;
+        double msprt = windowMs / stepsTaken;
         long nowNano = System.nanoTime();
 
         if (!this.tickDurationSampling) {
             this.tickDurationSampling = true;
             this.tickDurationLastNano = nowNano;
-            this.regionTickDuration = (float) durationMs;
+            this.tickWindowMs = (float) windowMs;
+            this.msprtMs = (float) msprt;
             return;
         }
 
@@ -739,14 +722,11 @@ public class RegionTickManager {
         if (elapsedNano <= 0) return;
 
         double alpha = 1.0 - Math.exp(-(elapsedNano / 1_000_000_000.0) / TICK_DURATION_TIME_CONSTANT_SECONDS);
-        this.regionTickDuration += (float) ((durationMs - this.regionTickDuration) * alpha);
+        this.tickWindowMs += (float) ((windowMs - this.tickWindowMs) * alpha);
+        this.msprtMs += (float) ((msprt - this.msprtMs) * alpha);
     }
 
-    /**
-     * 按完整墙钟时间窗口统计区域真实推进速度，再对窗口结果做时间加权 EMA。
-     * 分子是 stepped 的实际增量，分母是 System.nanoTime() 的实际经过时间，
-     * 因此不会把“服务端每秒 20 次回调”误当成区域每秒 20 GT。
-     */
+    // 按完整墙钟窗口统计区域真实推进速度, 再对窗口结果做时间加权 EMA
     public void sampleStepRate(int currentStepped, long nowNano) {
         if (!this.tpsSampling) {
             this.tpsSampling = true;
@@ -796,7 +776,8 @@ public class RegionTickManager {
 
 
     public double getTPS() { return regionTPS; }
-    public float getRegionTickDuration() { return regionTickDuration; }
+    public float getTickWindowMs() { return tickWindowMs; }
+    public float getMsprtMs() { return msprtMs; }
 
 }
 

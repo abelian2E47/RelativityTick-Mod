@@ -12,10 +12,7 @@ import net.minecraft.world.tick.WorldTickScheduler;
 
 import java.util.function.BiConsumer;
 
-//dash 原语：步数不用 accumulator 配额，一直跑到区域预算或服务端 MSPT 上限把它截断为止。
-//截断判定与 RelativityTick.runRegionTicks（rate/step 走的路径）完全一致：先看全局 MSPT，再看区域预算，
-//并且都发生在"至少已经执行了一步"之后 —— 所以一次 dash 永远至少推进 1 gt。
-//dash 命令、dash 剩余步数的后续 gt、以及 sprint 的每个 gt 都走这里。
+// dash 原语: 步数不用 accumulator 配额, 一直跑到区域预算或服务端 MSPT 上限为止
 public final class RegionDashRunner {
 
     public record DashResult(int stepsTaken, int remainingSteps, long durationNano) {}
@@ -25,7 +22,7 @@ public final class RegionDashRunner {
     public static DashResult runDash(MinecraftServer server, RegionTickManager region, ServerWorld world,
                                      int maxSteps, boolean exclusiveBatch) {
         long regionStartNano = System.nanoTime();
-        long regionBudgetNano = (long) (region.getTickDurationLimit() * 1_000_000L);
+        long regionBudgetNano = (long) (region.getTickWindowLimitMs() * 1_000_000L);
         WorldTickScheduler<Block> blockScheduler = world.getBlockTickScheduler();
         WorldTickScheduler<Fluid> fluidScheduler = world.getFluidTickScheduler();
         BiConsumer<BlockPos, Block> blockTicker = (pos, block) -> RelativityTickUtils.tickBlock(world, pos, block);

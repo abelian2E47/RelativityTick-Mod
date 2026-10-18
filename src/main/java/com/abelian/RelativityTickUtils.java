@@ -60,8 +60,11 @@ public class RelativityTickUtils {
     }
 
     public static double getServerMspt(MinecraftServer server) {
-        double MSPT = server.getAverageTickTime();
-        return truncate(MSPT,4);
+        return truncateTo4Decimals(server.getAverageTickTime());
+    }
+
+    private static double truncateTo4Decimals(double value) {
+        return Math.floor(value * 10000.0) / 10000.0;
     }
 
 }

@@ -31,6 +31,10 @@ public class ClientRegion {
     private int replayedSteps;
     private boolean disableHopperTick;
     private boolean disableEntityTick;
+    private boolean disableObserverTick;
+    private double tickWindowMs;
+    private double msprtMs;
+
 
     public ClientRegion(RegionSyncPayload payload) {
         this.id = payload.id();
@@ -47,6 +51,7 @@ public class ClientRegion {
         this.virtualTime = payload.virtualTime();
         this.disableHopperTick = payload.disableHopperTick();
         this.disableEntityTick = payload.disableEntityTick();
+        this.disableObserverTick = payload.disableObserverTick();
         replaceChunks(payload.chunkPositions());
         if (!isRunning()) {
             this.accumulator = this.accumulator >= 1.0 ? 1.0 : 0.0;
@@ -71,8 +76,11 @@ public class ClientRegion {
         return virtualTime;
     }
 
-    public void updateRegionTPS(RegionTPSPayload payload){
+    public void updateRegionTPS(RegionTPSPayload payload) {
         this.regionTPS = payload.TPS();
+        this.tickWindowMs = payload.tickWindowMs();
+        this.msprtMs = payload.msprtMs();
+        updateVirtualTime(payload.virtualTime());
     }
 
     //为实体渲染插值承上启下
@@ -190,6 +198,21 @@ public class ClientRegion {
     public boolean isDisableHopperTick(){ return disableHopperTick; }
 
     public boolean isDisableEntityTick(){ return disableEntityTick; }
+    public boolean isDisableObserverTick() { return disableObserverTick; }
+
+    public double getRate() { return rate; }
+
+    public double getRegionTPS() { return regionTPS; }
+
+    /** 一个 tick 窗口内区域刻的合计耗时（mspt）。 */
+    public double getTickWindowMs() { return tickWindowMs; }
+
+    /** 单次区域刻的平均耗时（msprt）。 */
+    public double getMsprtMs() { return msprtMs; }
+
+    public int getChunkCount() { return chunkPositions.size(); }
+
+    public boolean isReleased() { return regionState == RegionTickManager.RegionState.RELEASED; }
 
     public Set<Long> getChunkPositions(){ return chunkPositions; }
 

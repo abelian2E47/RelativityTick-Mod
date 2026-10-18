@@ -346,15 +346,15 @@ public class ServerCommands {
             return 1;
         }
 
-        //dash：命令在 END_SERVER_TICK 之后执行，这里自己开一批（批内只有本区域在 tick）
+        //dash
         com.abelian.ServerTickBridge.beginRegionTickBatch();
-        //步数挂到 dash 携带池：本 gt 跑到预算截断，剩下的由后续 gt 继续按同一节奏跑满
+
         int totalDashSteps = rcc.manager.getPendingDashSteps() + steps;
         RegionDashRunner.DashResult result = RegionDashRunner.runDash(
                 rcc.source.getServer(), rcc.manager, rcc.world, totalDashSteps, true);
         rcc.manager.setPendingDashSteps(result.remainingSteps());
         if (result.stepsTaken() > 0) {
-            rcc.manager.recordTickDuration(result.durationNano());
+            rcc.manager.recordTickDuration(result.durationNano(), result.stepsTaken());
         }
 
         Map<Integer, EntityStateRecord> entityStates = new LinkedHashMap<>();
@@ -429,7 +429,6 @@ public class ServerCommands {
         }
 
         RegionsManager.savePersistentState();
-        //速率变了，丢掉旧采样等新的实测值（不拿目标速率冒充实测）
         rcc.manager.resetStepRateSampling();
 
         sendFeedback(rcc.source, rcc.id, wasControlled ? "relativitytick.command.region.rate_set" : "relativitytick.command.region.taken_over_rate_set", formatConfigValue(rate));
@@ -441,7 +440,7 @@ public class ServerCommands {
 
     private static int setTickDurationLimit(RegionCommandContext rcc, double tickDurationLimit) {
         if (rcc.isInvalid()) return 0;
-        RegionsManager.setRegionTickDurationLimit(rcc.id, tickDurationLimit);
+        RegionsManager.setRegionTickWindowLimitMs(rcc.id, tickDurationLimit);
         sendFeedback(rcc.source, rcc.id, "relativitytick.command.region.tick_duration_limit_set", String.format("%.3f ms", tickDurationLimit));
         return 1;
     }
@@ -524,9 +523,9 @@ public class ServerCommands {
         source.sendFeedback(() -> Text.translatable("relativitytick.command.status.chunks",
                 Text.literal(String.valueOf(mgr.getChunkPositions().size())).formatted(Formatting.AQUA)), false);
 
-        double regionTickDuration = mgr.getRegionTickDuration();
-        double regionTickDurationLimit = mgr.getTickDurationLimit();
-        double costRatio = regionTickDuration / regionTickDurationLimit;
+        double tickWindowMs = mgr.getTickWindowMs();
+        double tickWindowLimitMs = mgr.getTickWindowLimitMs();
+        double costRatio = tickWindowMs / tickWindowLimitMs;
         int costColor = costRatio >= 0.9 ? 0xFF5555 : costRatio >= 0.6 ? 0xFFA500 : 0x55FF55;
 
         //TPS 是实测值（按真实时间加权），采样时长不够时显示"采样中"，不拿目标速率顶替
@@ -534,26 +533,19 @@ public class ServerCommands {
                 ? Text.literal(String.format("%.2f", mgr.getTPS())).formatted(Formatting.GREEN)
                 : Text.translatable("relativitytick.command.status.tps_measuring").formatted(Formatting.GRAY);
 
-        if (running) {
-            source.sendFeedback(() -> Text.translatable("relativitytick.command.status.tps_rate",
-                    tpsText,
-                    Text.literal(String.format("%.2f", mgr.getRate())).formatted(Formatting.GREEN)), false);
+        //TPS 单独一行、任何状态都给：它和"速率"是两回事，混在一行的旧写法在冻结/已释放时只剩速率可看
+        source.sendFeedback(() -> Text.translatable("relativitytick.command.status.region_tps",
+                tpsText), false);
 
-        } else if (sprinting) {
-            //冲刺不按速率推进，速率列显示"不限"；TPS 仍是实测值
-            source.sendFeedback(() -> Text.translatable("relativitytick.command.status.tps_rate",
-                    tpsText,
-                    Text.translatable("relativitytick.command.status.rate_unlimited").formatted(Formatting.GREEN)), false);
-
-        } else {
-            source.sendFeedback(() -> Text.translatable("relativitytick.command.status.region_tps_rate",
-                    Text.literal("-").formatted(Formatting.GRAY),
-                    Text.literal(String.format("%.2f", mgr.getRate())).formatted(Formatting.GREEN)), false);
-        }
+        // 速率也单独一行; 冲刺不按速率推进, 这一行显示"不限"
+        Text rateText = sprinting
+                ? Text.translatable("relativitytick.command.status.rate_unlimited").formatted(Formatting.GREEN)
+                : Text.literal(String.format("%.2f", mgr.getRate())).formatted(Formatting.GREEN);
+        source.sendFeedback(() -> Text.translatable("relativitytick.command.status.region_rate", rateText), false);
 
         source.sendFeedback(() -> Text.translatable("relativitytick.command.status.tick_duration_limit",
-                Text.literal(String.format("%.3f", regionTickDuration) + "ms").styled(style -> style.withColor(costColor)),
-                Text.literal(String.format("%.3f", regionTickDurationLimit) + "ms").formatted(Formatting.GREEN)), false);
+                Text.literal(String.format("%.3f", tickWindowMs) + "ms").styled(style -> style.withColor(costColor)),
+                Text.literal(String.format("%.3f", tickWindowLimitMs) + "ms").formatted(Formatting.GREEN)), false);
 
         if (controlled && !running && !sprinting) {
             source.sendFeedback(() -> Text.translatable("relativitytick.command.status.pending_steps",
@@ -607,7 +599,7 @@ public class ServerCommands {
     }
 
     private static void syncRegionTPS(RegionCommandContext rcc) {
-        RegionTPSPayload payload = new RegionTPSPayload(rcc.id, rcc.manager.getRegionTickDuration(), rcc.manager.getTPS(), rcc.manager.getVirtualTime());
+        RegionTPSPayload payload = new RegionTPSPayload(rcc.id, rcc.manager.getTickWindowMs(), rcc.manager.getMsprtMs(), rcc.manager.getTPS(), rcc.manager.getVirtualTime());
         sendToWorldPlayers(rcc.world, payload);
     }
 

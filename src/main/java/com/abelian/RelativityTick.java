@@ -42,6 +42,8 @@ public class RelativityTick implements ModInitializer {
     public static final Identifier PASSENGER_SYNC_PACKET_ID = Identifier.of(MOD_ID, "passenger_sync_packet");
     public static final Identifier REGION_TIME_PACKET_ID = Identifier.of(MOD_ID, "region_time_packet");
     public static final Identifier SCHEDULED_TICK_DATA_PAYLOAD = Identifier.of(MOD_ID, "scheduled_tick_data_payload");
+    public static final Identifier REGION_STATUS_PACKET_ID = Identifier.of(MOD_ID, "region_status_packet");
+    public static final Identifier REGION_STATUS_REQUEST_PACKET_ID = Identifier.of(MOD_ID, "region_status_request_packet");
 
     private static final double REGION_TPS_RELATIVE_SEND_THRESHOLD = 0.01;
     private static final long REGION_TPS_STABLE_SEND_NANOS = 1_000_000_000L;
@@ -63,6 +65,10 @@ public class RelativityTick implements ModInitializer {
         PayloadTypeRegistry.playS2C().register(PassengerSyncPayload.ID, PassengerSyncPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(RegionTimePayload.ID, RegionTimePayload.CODEC);
         PayloadTypeRegistry.playS2C().register(ScheduledTickDataPayload.ID, ScheduledTickDataPayload.CODEC);
+        //面板"按需拉取"的实时状态：请求/应答各一个包，只读，见 RegionStatusSync
+        PayloadTypeRegistry.playC2S().register(RegionStatusRequestPayload.ID, RegionStatusRequestPayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(RegionStatusPayload.ID, RegionStatusPayload.CODEC);
+        RegionStatusSync.register();
 
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
             RelativityTickUtils.set(server);
@@ -79,6 +85,7 @@ public class RelativityTick implements ModInitializer {
             LAST_SENT_REGION_TPS.clear();
             REGION_TPS_SEND_CANDIDATE_SINCE.clear();
             REGION_ENTITY_SYNC_LAST_STEPPED.clear();
+            RegionStatusSync.clear();
             RegionBlockEventProcessor.clear();
         });
 
@@ -110,7 +117,7 @@ public class RelativityTick implements ModInitializer {
                     RegionRunResult result = runRegionTicks(server, region, world, region.getPendingSteps(), false);
                     int remaining = result.remainingSteps();
                     if (result.stepsTaken() > 0) {
-                        region.recordTickDuration(result.durationNano());
+                        region.recordTickDuration(result.durationNano(), result.stepsTaken());
                     }
 
                     Map<Integer, EntityStateRecord> entityStates = new LinkedHashMap<>();
@@ -129,8 +136,7 @@ public class RelativityTick implements ModInitializer {
                                 region.getState(), region.getRate(), region.getVirtualTime(),
                                 region.isDisableHopperTick(), region.isDisableEntityTick(), region.isDisableObserverTick());
                         RegionEntitySyncPayload entityPayload = new RegionEntitySyncPayload(id, new ArrayList<>(entityStates.values()));
-                        //步进完成:广播 0 让客户端清零本地 pending,停止继续推虚拟时间(否则客户端慢于服务端时会把
-                        //剩余时间显示推成负数/提前消失)。与既有 sync+entity 同批发,仅多一个极小包。
+                        // 步进完成: 广播 0 让客户端清零本地 pending 并停止继续推虚拟时间; 与既有 sync+entity 同批发
                         RegionStepPayload clearPendingPayload = new RegionStepPayload(id, 0);
                         for (ServerPlayerEntity player : world.getPlayers()) {
                             ServerPlayNetworking.send(player, syncPayload);
@@ -153,7 +159,7 @@ public class RelativityTick implements ModInitializer {
 
                 RegionRunResult result = runRegionTicks(server, region, world, Integer.MAX_VALUE, true);
                 if (result.stepsTaken() > 0) {
-                    region.recordTickDuration(result.durationNano());
+                    region.recordTickDuration(result.durationNano(), result.stepsTaken());
                 }
                 if (result.stepsTaken() > 0) {
                     sendRegionTime(id, region, world);
@@ -161,10 +167,6 @@ public class RelativityTick implements ModInitializer {
             }
         });
 
-        //dash 剩余步数与 sprint：同一套 dash 原语（每 gt 按预算跑满）。
-        //dash 命令被预算截断后剩下的步数放在 pendingDashSteps，这里每 gt 继续跑满直到跑完；
-        //sprint 则每 gt 都跑满，有界冲刺的 gt 数用完就恢复冲刺前的状态。
-        //这一批里可能还有别的区域在 tick，所以不能声明"单区域批"（见 ServerTickBridge.claimEntity）。
         ServerTickEvents.END_SERVER_TICK.register(server -> {
             for (String id : RegionsManager.getRegionIdsInOrder()) {
                 RegionTickManager region = RegionsManager.getRegion(id);
@@ -181,7 +183,7 @@ public class RelativityTick implements ModInitializer {
                         sprinting ? Integer.MAX_VALUE : carrySteps, false);
 
                 if (result.stepsTaken() > 0) {
-                    region.recordTickDuration(result.durationNano());
+                    region.recordTickDuration(result.durationNano(), result.stepsTaken());
                 }
                 if (!sprinting) {
                     region.setPendingDashSteps(result.remainingSteps());
@@ -202,8 +204,6 @@ public class RelativityTick implements ModInitializer {
             }
         });
 
-        //TPS 统计：所有推进路径都只是让 stepped 增长，所以统一在这里按 gt 采一次 stepped 增量，
-        //以后新增推进路径也不会漏（没推进的 gt 记 0，读数自然衰减）。必须排在所有推进 handler 之后。
         ServerTickEvents.END_SERVER_TICK.register(server -> {
             long nowNano = System.nanoTime();
             for (String id : RegionsManager.getRegionIdsInOrder()) {
@@ -278,7 +278,7 @@ public class RelativityTick implements ModInitializer {
     }
 
     private static void sendRegionTpsAndEntities(String id, RegionTickManager region, ServerWorld world, double currentTPS) {
-        RegionTPSPayload tpsPayload = new RegionTPSPayload(id, region.getRegionTickDuration(), currentTPS, region.getVirtualTime());
+        RegionTPSPayload tpsPayload = new RegionTPSPayload(id, region.getTickWindowMs(), region.getMsprtMs(), currentTPS, region.getVirtualTime());
         RegionEntitySyncPayload entityPayload = new RegionEntitySyncPayload(id, new ArrayList<>(region.collectEntityStates(world)));
         for (ServerPlayerEntity player : world.getPlayers()) {
             ServerPlayNetworking.send(player, tpsPayload);
@@ -314,7 +314,7 @@ public class RelativityTick implements ModInitializer {
 
     private static RegionRunResult runRegionTicks(MinecraftServer server, RegionTickManager region, ServerWorld world, int maxSteps, boolean consumePendingSteps) {
         long regionStartNano = System.nanoTime();
-        long regionBudgetNano = (long)(region.getTickDurationLimit() * 1_000_000L);
+        long regionBudgetNano = (long)(region.getTickWindowLimitMs() * 1_000_000L);
         WorldTickScheduler<Block> blockScheduler = world.getBlockTickScheduler();
         WorldTickScheduler<Fluid> fluidScheduler = world.getFluidTickScheduler();
         BiConsumer<BlockPos, Block> blockTicker = (pos, block) -> RelativityTickUtils.tickBlock(world, pos, block);

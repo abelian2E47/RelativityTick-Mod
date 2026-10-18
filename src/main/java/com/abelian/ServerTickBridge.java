@@ -171,6 +171,10 @@ public class ServerTickBridge {
 
     public static void markChunkActivity(World world, long chunkPos) {
         if (!(world instanceof ServerWorld serverWorld)) return;
+        //没有锂时这份记录没有任何消费者: wakeChunksWithOutsideActivity 在不加载锂的分支里
+        //直接整批丢弃(非锂环境既没有休眠也没有时间型捷径)。本方法挂在 setBlockState 与
+        //EntityList.add/remove 的全局热路径上, 所以先做这一步判断, 省掉线程局部与两次表查询。
+        if (!isLithiumLoaded()) return;
         //区域刻内: 锂自己的事件通路(容器内容变化/实体移动通知)与区内时间基准一致,不需要补。
         if (RegionTimeContext.getTime(serverWorld) != null) return;
         RegionTickManager region = RegionsManager.getRegionByChunk(serverWorld, chunkPos);
@@ -560,6 +564,11 @@ public class ServerTickBridge {
             if (state.dirty) {
                 state.rebuild(tickers);
             }
+            //这个世界一个可 tick 的方块实体都没有(区域里只有红石/农田/水等)时,不必再逐区块查表。
+            //上面的 pending 合并与 rebuild 照做不误,与"原版每刻先把 pending 并入主表"一致。
+            if (!state.hasTickers()) {
+                return;
+            }
             state.forEach(chunkPositions, action);
         } finally {
             accessor.setIteratingTickingBlockEntities(false);
@@ -596,6 +605,10 @@ public class ServerTickBridge {
                 addTicker(pos, indexedTicker);
             }
             dirty = false;
+        }
+
+        private boolean hasTickers() {
+            return !byChunk.isEmpty() || !unindexedTickers.isEmpty();
         }
 
         private void refreshUnindexedTickers() {
@@ -650,6 +663,11 @@ public class ServerTickBridge {
                     }
                     if (cursor.advance()) {
                         cursors.add(cursor);
+                    } else {
+                        //原实现只把 finally 里"还没轮到的游标"放回池子, 而循环本身会把队列抽空,
+                        //于是 recycleAll 永远拿到空队列, 每个区块每步都还是新建一个游标。
+                        //跑完的游标在这里归还, 池子才真的起作用。
+                        cursorPool.add(cursor);
                     }
                 }
             } finally {

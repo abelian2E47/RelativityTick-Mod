@@ -14,8 +14,7 @@ public record RegionSyncPayload(String id, String dimension, Set<Long> chunkPosi
     public static final Id<RegionSyncPayload> ID = new CustomPayload.Id<>(RelativityTick.REGION_SYNC_PACKET_ID);
     @Override
     public Id<? extends CustomPayload> getId() {return ID;}
-    private static final PacketCodec<ByteBuf, RegionTickManager.RegionState> STATE_CODEC =
-            PacketCodecs.indexed(i -> RegionTickManager.RegionState.values()[i], RegionTickManager.RegionState::ordinal);
+    private static final PacketCodec<ByteBuf, RegionTickManager.RegionState> STATE_CODEC = RegionStateCodec.CODEC;
 
     public RegionSyncPayload(String id, String dimension, Set<Long> chunkPositions, RegionTickManager.RegionState state, double rate, long virtualTime,
                              boolean disableHopperTick, boolean disableEntityTick, boolean disableObserverTick) {

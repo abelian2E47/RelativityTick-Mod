@@ -1,5 +1,7 @@
 package com.abelian.client.clientRegionTick;
 
+import com.abelian.network.RegionStatusPayload;
+import com.abelian.network.RegionStatusRequestPayload;
 import com.abelian.network.RegionSyncPayload;
 import com.abelian.network.RegionTPSPayload;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
@@ -17,6 +19,8 @@ public class ClientRegionManager {
     private record DimensionChunkKey(String dimension, long chunkPos) {}
 
     private static final Map<DimensionChunkKey, String> CHUNK_TO_REGION_ID = new ConcurrentHashMap<>();
+    private static final Map<String, RegionStatusPayload> LIVE_STATUS = new ConcurrentHashMap<>();
+    private static final Map<String, Long> LIVE_STATUS_NANOS = new ConcurrentHashMap<>();
 
     public static void register(){
         ClientPlayNetworking.registerGlobalReceiver(RegionSyncPayload.ID, (payload, context) -> context.client().execute(() -> {
@@ -43,10 +47,32 @@ public class ClientRegionManager {
         ClientPlayNetworking.registerGlobalReceiver(RegionTPSPayload.ID, (payload, context) -> context.client().execute(() -> {
             ClientRegion region = REGIONS.get(payload.regionID());
             if (region != null) {
-                region.updateVirtualTime(payload.virtualTime());
                 region.updateRegionTPS(payload);
             }
         }));
+
+        //面板按需拉取的实时快照：只在玩家打开监测/配置面板时才回包，存起来给界面读
+        ClientPlayNetworking.registerGlobalReceiver(RegionStatusPayload.ID, (payload, context) -> context.client().execute(() -> {
+            LIVE_STATUS.put(payload.regionId(), payload);
+            LIVE_STATUS_NANOS.put(payload.regionId(), System.nanoTime());
+        }));
+    }
+
+    /** 向服务端要一份该区域"此刻"的快照；面板每 4 tick 调一次。 */
+    public static void requestLiveStatus(String regionId) {
+        if (regionId == null) return;
+        if (!ClientPlayNetworking.canSend(RegionStatusRequestPayload.ID)) return;
+        ClientPlayNetworking.send(new RegionStatusRequestPayload(regionId));
+    }
+
+    /** 最近一次拉取到的快照；没拉过（或已过期）时为 null，界面据此显示"正在获取"。 */
+    public static RegionStatusPayload getLiveStatus(String regionId) {
+        return regionId == null ? null : LIVE_STATUS.get(regionId);
+    }
+
+    public static long getLiveStatusAgeMillis(String regionId) {
+        Long nanos = regionId == null ? null : LIVE_STATUS_NANOS.get(regionId);
+        return nanos == null ? -1L : (System.nanoTime() - nanos) / 1_000_000L;
     }
 
     public static String getRegionIDFromChunk(ClientWorld world, ChunkPos chunkPos){
@@ -86,6 +112,8 @@ public class ClientRegionManager {
     public static void clear() {
         REGIONS.clear();
         CHUNK_TO_REGION_ID.clear();
+        LIVE_STATUS.clear();
+        LIVE_STATUS_NANOS.clear();
     }
 
     private static DimensionChunkKey key(ClientWorld world, long chunkPos) {

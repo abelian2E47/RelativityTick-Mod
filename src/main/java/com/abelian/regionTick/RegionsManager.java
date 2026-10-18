@@ -23,9 +23,7 @@ import static com.abelian.RelativityTickUtils.getServer;
 public class RegionsManager {
     private static final Map<String, RegionTickManager> ID_TO_REGION = new LinkedHashMap<>();
 
-    //维度 → 区块 → 区域 的分层表。原来用 record 复合键，每次查询都要 new 一个 record（24B + 哈希），
-    //而 getRegionByChunk 在原版实体刻（每实体每刻）、方块实体 tick、区块刻上都会走；
-    //现在外层只按维度取值，内层直接 long 主键寻址，查询零分配。
+    // 维度 → 区块 → 区域 的分层表
     private static final Map<RegistryKey<World>, Long2ObjectMap<RegionTickManager>> CHUNK_TO_REGION = new HashMap<>();
     private static boolean loadedFromPersistentState = false;
     private static boolean shuttingDown = false;
@@ -215,10 +213,10 @@ public class RegionsManager {
         shuttingDown = false;
     }
 
-    public static void setRegionTickDurationLimit(String id, double maxRegionCostMs) {
+    public static void setRegionTickWindowLimitMs(String id, double maxRegionCostMs) {
         RegionTickManager region = ID_TO_REGION.get(id);
         if (region != null) {
-            region.setMaxRegionCostMs(maxRegionCostMs);
+            region.setTickWindowLimitMs(maxRegionCostMs);
             savePersistentState();
         }
     }

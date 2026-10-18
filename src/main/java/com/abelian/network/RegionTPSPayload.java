@@ -8,7 +8,7 @@ import net.minecraft.network.codec.PacketCodecs;
 
 import static com.abelian.RelativityTick.REGION_TPS_SYNC_PACKET_ID;
 
-public record RegionTPSPayload(String regionID, float regionTickDuration, double TPS, long virtualTime) implements CustomPayload {
+public record RegionTPSPayload(String regionID, float tickWindowMs, float msprtMs, double TPS, long virtualTime) implements CustomPayload {
     public static final Id<RegionTPSPayload> ID = new CustomPayload.Id<>(REGION_TPS_SYNC_PACKET_ID);
     @Override
     public Id<? extends CustomPayload> getId() {return ID;}
@@ -18,7 +18,10 @@ public record RegionTPSPayload(String regionID, float regionTickDuration, double
             RegionTPSPayload::regionID,
 
             PacketCodecs.FLOAT,
-            RegionTPSPayload::regionTickDuration,
+            RegionTPSPayload::tickWindowMs,
+
+            PacketCodecs.FLOAT,
+            RegionTPSPayload::msprtMs,
 
             PacketCodecs.DOUBLE,
             RegionTPSPayload::TPS,
